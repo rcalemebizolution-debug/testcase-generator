@@ -227,7 +227,7 @@ export default function App() {
           </div>
           {cases.length === 0 ? <EmptyState /> : <div className="cases-list">
             <div className="suite-summary"><div><span>{cases.length}</span><p><strong>Total cases</strong><small>{form.coverage} coverage</small></p></div><div className="summary-types">{[...new Set(cases.map(c => c.type))].map(t => <span key={t}>{t}</span>)}</div></div>
-            {cases.map((item, i) => <TestCase key={item.id} item={item} open={openCases.includes(i)} onToggle={() => setOpenCases(o => o.includes(i) ? o.filter(x => x !== i) : [...o, i])}/>) }
+            {cases.map((item, i) => <TestCase key={item.id} item={item} open={openCases.includes(i)} onToggle={() => setOpenCases(o => o.includes(i) ? [] : [i])}/>) }
           </div>}
         </section>
       </div>
