@@ -56,8 +56,8 @@ const testCaseSchema = {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed.' })
 
-  if (!process.env.OPENAI_API_KEY || !process.env.AI_ACCESS_CODE) {
-    return res.status(503).json({ error: 'AI is not configured yet. Add OPENAI_API_KEY and AI_ACCESS_CODE in Vercel.' })
+  if (!process.env.GROQ_API_KEY || !process.env.AI_ACCESS_CODE) {
+    return res.status(503).json({ error: 'AI is not configured yet. Add GROQ_API_KEY and AI_ACCESS_CODE in Vercel.' })
   }
 
   if (!matchesSecret(req.headers['x-app-access-code'], process.env.AI_ACCESS_CODE)) {
@@ -77,21 +77,24 @@ export default async function handler(req, res) {
   const desiredCount = safeInput.coverage === 'Thorough' ? 8 : safeInput.coverage === 'Focused' ? 3 : 5
 
   try {
-    const response = await fetch('https://api.openai.com/v1/responses', {
+    const model = process.env.GROQ_MODEL || 'openai/gpt-oss-120b'
+    const systemPrompt = `You are a senior QA engineer creating practical, real-world manual test cases. Return exactly ${desiredCount} distinct cases. Use the supplied module and sub-module exactly. Cover realistic user behavior and the most relevant mix of happy path, invalid data, permissions, boundary values, interrupted workflows, integration failures, security, concurrency, session state, and recovery. Only include categories that genuinely apply. Make every step executable and every expected result observable and specific. Do not invent product requirements as facts; when an assumption is necessary, state it clearly in the description. Keep descriptions concise. Assign sequential IDs starting with TC-001.`
+
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || 'gpt-5.4-mini',
-        store: false,
-        max_output_tokens: 7000,
-        instructions: `You are a senior QA engineer creating practical, real-world manual test cases. Return exactly ${desiredCount} distinct cases. Use the supplied module and sub-module exactly. Cover realistic user behavior and the most relevant mix of happy path, invalid data, permissions, boundary values, interrupted workflows, integration failures, security, concurrency, session state, and recovery. Only include categories that genuinely apply. Make every step executable and every expected result observable and specific. Do not invent product requirements as facts; when an assumption is necessary, state it clearly in the description. Keep descriptions concise. Assign sequential IDs starting with TC-001.`,
-        input: `Create a test suite from this issue context:\n${JSON.stringify(safeInput, null, 2)}`,
-        text: {
-          format: {
-            type: 'json_schema',
+        model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `Create a test suite from this issue context:\n${JSON.stringify(safeInput, null, 2)}` },
+        ],
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
             name: 'test_case_suite',
             strict: true,
             schema: testCaseSchema,
@@ -102,18 +105,16 @@ export default async function handler(req, res) {
 
     const payload = await response.json()
     if (!response.ok) {
-      const detail = String(payload?.error?.message || 'OpenAI request failed.').slice(0, 240)
+      const detail = String(payload?.error?.message || 'Groq request failed.').slice(0, 240)
       return res.status(response.status).json({ error: detail })
     }
 
-    const outputText = payload.output
-      ?.flatMap(item => item.content || [])
-      .find(content => content.type === 'output_text')?.text
+    const outputText = payload.choices?.[0]?.message?.content
 
     if (!outputText) return res.status(502).json({ error: 'The AI returned no test cases. Please try again.' })
 
     const parsed = JSON.parse(outputText)
-    return res.status(200).json({ cases: parsed.cases, model: process.env.OPENAI_MODEL || 'gpt-5.4-mini' })
+    return res.status(200).json({ cases: parsed.cases, model })
   } catch (error) {
     console.error('AI generation failed:', error)
     return res.status(500).json({ error: 'AI generation failed unexpectedly. Please try again.' })
