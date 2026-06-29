@@ -126,6 +126,9 @@ export default function App() {
   const [notice, setNotice] = useState('')
   const [errors, setErrors] = useState({})
   const [generating, setGenerating] = useState(false)
+  const [aiEnabled, setAiEnabled] = useState(true)
+  const [accessCode, setAccessCode] = useState('')
+  const [caseSource, setCaseSource] = useState('standard')
 
   useEffect(() => { localStorage.setItem('casecraft-form', JSON.stringify(form)) }, [form])
   const completed = useMemo(() => ['mainModule','subModule','issueTitle','issueDetails','precondition','testSteps'].filter(k => form[k].trim()).length, [form])
@@ -135,7 +138,7 @@ export default function App() {
     setErrors(e => ({ ...e, [key]: false }))
   }
 
-  const generate = () => {
+  const generate = async () => {
     const nextErrors = Object.fromEntries(['mainModule','subModule','issueTitle','issueDetails','testSteps'].map(k => [k, !form[k].trim()]))
     setErrors(nextErrors)
     if (Object.values(nextErrors).some(Boolean)) {
@@ -143,13 +146,39 @@ export default function App() {
       setTimeout(() => setNotice(''), 2400)
       return
     }
+    if (aiEnabled && !accessCode.trim()) {
+      setNotice('Enter your AI access code, or choose Standard rules.')
+      setTimeout(() => setNotice(''), 3000)
+      return
+    }
     setGenerating(true)
-    setTimeout(() => {
+
+    if (!aiEnabled) {
       const next = generateCases(form)
-      setCases(next); setOpenCases([0]); setGenerating(false)
+      setCases(next); setOpenCases([0]); setGenerating(false); setCaseSource('standard')
       setNotice(`${next.length} test cases generated`)
       setTimeout(() => setNotice(''), 2400)
-    }, 650)
+      return
+    }
+
+    try {
+      const response = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-app-access-code': accessCode.trim() },
+        body: JSON.stringify(form),
+      })
+      const payload = await response.json()
+      if (!response.ok) throw new Error(payload.error || 'AI generation failed.')
+      setCases(payload.cases); setOpenCases([0]); setCaseSource('ai')
+      setNotice(`${payload.cases.length} real-world AI test cases generated`)
+    } catch (error) {
+      const fallback = generateCases(form)
+      setCases(fallback); setOpenCases([0]); setCaseSource('standard')
+      setNotice(`AI unavailable: ${error.message} Standard cases generated instead.`)
+    } finally {
+      setGenerating(false)
+      setTimeout(() => setNotice(''), 5200)
+    }
   }
 
   const suiteText = () => cases.map(c => `${c.id}: ${c.title}\nModule: ${c.module}\nSub-Module: ${c.subModule}\nType: ${c.type} | Priority: ${c.priority}\nPrecondition: ${c.precondition}\nSteps:\n${c.steps.map((s,i) => `${i+1}. ${s}`).join('\n')}\nExpected: ${c.expected}`).join('\n\n---\n\n')
@@ -212,22 +241,24 @@ export default function App() {
           <div className="options-row">
             <Field label="Priority"><select value={form.priority} onChange={e => update('priority', e.target.value)}><option>Low</option><option>Medium</option><option>High</option><option>Critical</option></select></Field>
             <Field label="Coverage"><select value={form.coverage} onChange={e => update('coverage', e.target.value)}><option>Focused</option><option>Balanced</option><option>Thorough</option></select></Field>
+            <Field label="Generation mode"><select value={aiEnabled ? 'AI enhanced' : 'Standard rules'} onChange={e => setAiEnabled(e.target.value === 'AI enhanced')}><option>AI enhanced</option><option>Standard rules</option></select></Field>
+            {aiEnabled && <Field label="AI access code" hint="Not saved"><input type="password" value={accessCode} onChange={e => setAccessCode(e.target.value)} placeholder="Enter your private code" autoComplete="off" /></Field>}
           </div>
 
           <div className="form-actions">
             <button className="clear" onClick={() => { setForm(blankForm); setCases([]); setErrors({}) }}>{icons.trash}<span>Clear</span></button>
             <button className="example" onClick={() => { setForm(example); setErrors({}) }}>Use example</button>
-            <button className="generate" onClick={generate} disabled={generating}>{generating ? <span className="spinner"/> : icons.wand}<span>{generating ? 'Crafting your suite…' : 'Generate test cases'}</span></button>
+            <button className="generate" onClick={generate} disabled={generating}>{generating ? <span className="spinner"/> : icons.wand}<span>{generating ? 'Analyzing real-world scenarios…' : aiEnabled ? 'Generate with AI' : 'Generate test cases'}</span></button>
           </div>
         </section>
 
         <section className="result-panel">
-          <div className="result-head"><div><span>02</span><div><h2>Generated suite</h2><p>{cases.length ? `${cases.length} test cases · ${form.mainModule}` : 'Ready when you are'}</p></div></div>
+          <div className="result-head"><div><span>02</span><div><h2>{cases.length && caseSource === 'ai' ? 'AI-generated suite' : 'Generated suite'}</h2><p>{cases.length ? `${cases.length} test cases · ${form.mainModule}` : 'Ready when you are'}</p></div></div>
             {cases.length > 0 && <aside><button onClick={copy} title="Copy suite">{icons.copy}</button><button onClick={download} title="Download suite">{icons.download}</button></aside>}
           </div>
           {cases.length === 0 ? <EmptyState /> : <div className="cases-list">
             <div className="suite-summary"><div><span>{cases.length}</span><p><strong>Total cases</strong><small>{form.coverage} coverage</small></p></div><div className="summary-types">{[...new Set(cases.map(c => c.type))].map(t => <span key={t}>{t}</span>)}</div></div>
-            {cases.map((item, i) => <TestCase key={item.id} item={item} open={openCases.includes(i)} onToggle={() => setOpenCases(o => o.includes(i) ? o.filter(x => x !== i) : [...o, i])}/>) }
+            {cases.map((item, i) => <TestCase key={item.id} item={item} open={openCases.includes(i)} onToggle={() => setOpenCases(o => o.includes(i) ? [] : [i])}/>) }
           </div>}
         </section>
       </div>
