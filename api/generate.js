@@ -2,6 +2,8 @@ import { timingSafeEqual } from 'node:crypto'
 
 const RATE_WINDOW_MS = 60_000
 const RATE_LIMIT = 8
+const CASE_TYPES = ['Positive', 'Negative', 'Validation', 'Boundary', 'Security', 'Usability', 'Resilience', 'Integration']
+const PRIORITIES = ['Low', 'Medium', 'High', 'Critical']
 const rateStore = globalThis.__casecraftRateStore || new Map()
 globalThis.__casecraftRateStore = rateStore
 
@@ -38,8 +40,10 @@ const testCaseSchema = {
         required: ['id', 'type', 'priority', 'title', 'module', 'subModule', 'description', 'precondition', 'steps', 'expected'],
         properties: {
           id: { type: 'string' },
-          type: { type: 'string', enum: ['Positive', 'Negative', 'Validation', 'Boundary', 'Security', 'Usability', 'Resilience', 'Integration'] },
-          priority: { type: 'string', enum: ['Low', 'Medium', 'High', 'Critical'] },
+          // Groq can reject the whole response when a model invents a near-synonym
+          // for an enum value. Normalize these two labels after generation instead.
+          type: { type: 'string' },
+          priority: { type: 'string' },
           title: { type: 'string' },
           module: { type: 'string' },
           subModule: { type: 'string' },
@@ -51,6 +55,25 @@ const testCaseSchema = {
       },
     },
   },
+}
+
+function normalizeLabel(value, allowed, fallback) {
+  const normalized = String(value || '').trim().toLowerCase()
+  return allowed.find(label => label.toLowerCase() === normalized) || fallback
+}
+
+function normalizeCase(testCase, index, input) {
+  const title = String(testCase.title || '').trim()
+  const negativeFallback = /invalid|reject|prevent|denied|failure|error|missing|unauthori[sz]ed/i.test(title)
+
+  return {
+    ...testCase,
+    id: `TC-${String(index + 1).padStart(3, '0')}`,
+    type: normalizeLabel(testCase.type, CASE_TYPES, negativeFallback ? 'Negative' : 'Positive'),
+    priority: normalizeLabel(testCase.priority, PRIORITIES, 'Medium'),
+    module: input.mainModule,
+    subModule: input.subModule,
+  }
 }
 
 export default async function handler(req, res) {
@@ -78,7 +101,7 @@ export default async function handler(req, res) {
 
   try {
     const model = process.env.GROQ_MODEL || 'openai/gpt-oss-120b'
-    const systemPrompt = `You are a senior QA engineer creating practical, real-world manual test cases. Return exactly ${desiredCount} distinct cases. Use the supplied module and sub-module exactly. Cover realistic user behavior and the most relevant mix of happy path, invalid data, permissions, boundary values, interrupted workflows, integration failures, security, concurrency, session state, and recovery. Only include categories that genuinely apply. Make every step executable and every expected result observable and specific. Do not invent product requirements as facts; when an assumption is necessary, state it clearly in the description. Keep descriptions concise. Assign sequential IDs starting with TC-001.`
+    const systemPrompt = `You are a senior QA engineer creating practical, real-world manual test cases. Return exactly ${desiredCount} distinct cases. Use the supplied module and sub-module exactly. The type field must be exactly one of: ${CASE_TYPES.join(', ')}. The priority field must be exactly one of: ${PRIORITIES.join(', ')}. Cover realistic user behavior and the most relevant mix of happy path, invalid data, permissions, boundary values, interrupted workflows, integration failures, security, concurrency, session state, and recovery. Only include categories that genuinely apply. Make every step executable and every expected result observable and specific. Do not invent product requirements as facts; when an assumption is necessary, state it clearly in the description. Keep descriptions concise. Assign sequential IDs starting with TC-001.`
 
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -105,7 +128,10 @@ export default async function handler(req, res) {
 
     const payload = await response.json()
     if (!response.ok) {
-      const detail = String(payload?.error?.message || 'Groq request failed.').slice(0, 240)
+      const providerMessage = String(payload?.error?.message || '')
+      const detail = providerMessage.includes('failed_generation') || providerMessage.includes('does not match the expected schema')
+        ? 'The AI response could not be formatted correctly. Please generate again.'
+        : String(providerMessage || 'Groq request failed.').slice(0, 240)
       return res.status(response.status).json({ error: detail })
     }
 
@@ -114,7 +140,8 @@ export default async function handler(req, res) {
     if (!outputText) return res.status(502).json({ error: 'The AI returned no test cases. Please try again.' })
 
     const parsed = JSON.parse(outputText)
-    return res.status(200).json({ cases: parsed.cases, model })
+    const cases = parsed.cases.map((testCase, index) => normalizeCase(testCase, index, safeInput))
+    return res.status(200).json({ cases, model })
   } catch (error) {
     console.error('AI generation failed:', error)
     return res.status(500).json({ error: 'AI generation failed unexpectedly. Please try again.' })
