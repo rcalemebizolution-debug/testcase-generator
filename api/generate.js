@@ -65,6 +65,7 @@ function normalizeLabel(value, allowed, fallback) {
 function normalizeCase(testCase, index, input) {
   const title = String(testCase.title || '').trim()
   const negativeFallback = /invalid|reject|prevent|denied|failure|error|missing|unauthori[sz]ed/i.test(title)
+  const description = String(testCase.description || '').trim()
 
   return {
     ...testCase,
@@ -73,6 +74,7 @@ function normalizeCase(testCase, index, input) {
     priority: normalizeLabel(testCase.priority, PRIORITIES, 'Medium'),
     module: input.mainModule,
     subModule: input.subModule,
+    description: description || `Verifies "${input.issueTitle}" based on the reported issue: ${input.issueDetails}`,
   }
 }
 
@@ -101,7 +103,7 @@ export default async function handler(req, res) {
 
   try {
     const model = process.env.GROQ_MODEL || 'openai/gpt-oss-120b'
-    const systemPrompt = `You are a senior QA engineer creating practical, real-world manual test cases. Return exactly ${desiredCount} distinct cases. Use the supplied module and sub-module exactly. The type field must be exactly one of: ${CASE_TYPES.join(', ')}. The priority field must be exactly one of: ${PRIORITIES.join(', ')}. Cover realistic user behavior and the most relevant mix of happy path, invalid data, permissions, boundary values, interrupted workflows, integration failures, security, concurrency, session state, and recovery. Only include categories that genuinely apply. Make every step executable and every expected result observable and specific. Do not invent product requirements as facts; when an assumption is necessary, state it clearly in the description. Keep descriptions concise. Assign sequential IDs starting with TC-001.`
+    const systemPrompt = `You are a senior QA engineer creating practical, real-world manual test cases. Return exactly ${desiredCount} distinct cases. Use the supplied module and sub-module exactly. The type field must be exactly one of: ${CASE_TYPES.join(', ')}. The priority field must be exactly one of: ${PRIORITIES.join(', ')}. Each description must clearly explain the specific scenario being verified and connect it directly to the supplied issue title and issue details. Cover realistic user behavior and the most relevant mix of happy path, invalid data, permissions, boundary values, interrupted workflows, integration failures, security, concurrency, session state, and recovery. Only include categories that genuinely apply. Make every step executable and every expected result observable and specific. Do not invent product requirements as facts; when an assumption is necessary, state it clearly in the description. Keep descriptions concise. Assign sequential IDs starting with TC-001.`
 
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',

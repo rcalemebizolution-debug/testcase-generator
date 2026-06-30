@@ -41,14 +41,16 @@ function generateCases(data) {
   const expected = data.issueDetails.trim()
     ? `The workflow completes successfully and behaves as specified: ${data.issueDetails.trim()}`
     : `The ${title.toLowerCase()} workflow completes successfully with the expected result.`
+  const issueContext = data.issueDetails.trim() || title
+  const describe = purpose => `${purpose} for "${title}" based on the reported issue: ${issueContext}`
   const caseContext = {
     module: data.mainModule.trim(),
     subModule: data.subModule.trim(),
-    description: data.issueDetails.trim(),
   }
 
   const cases = [{
     id: 'TC-001', type: 'Positive', priority: data.priority, title: `${title} — happy path`, ...caseContext,
+    description: describe('Verifies that the complete valid user workflow succeeds'),
     precondition: base, steps, expected,
   }]
 
@@ -56,12 +58,14 @@ function generateCases(data) {
     cases.push({
       id: 'TC-002', type: 'Negative', priority: data.priority === 'Low' ? 'Medium' : data.priority,
       title: `${title} — reject invalid input`, ...caseContext,
+      description: describe('Verifies that missing, malformed, or invalid input is rejected safely'),
       precondition: base,
       steps: [...steps.slice(0, Math.max(1, steps.length - 1)), 'Provide missing, malformed, or invalid input', 'Submit the request'],
       expected: 'The request is not completed. A clear, actionable validation message is shown and no invalid data is saved.',
     })
     cases.push({
       id: 'TC-003', type: 'Validation', priority: 'Medium', title: `${title} — required-field validation`, ...caseContext,
+      description: describe('Verifies that required-field rules provide clear and consistent feedback'),
       precondition: base,
       steps: [steps[0], 'Leave all required fields empty', 'Attempt to continue or submit'],
       expected: 'Required fields are identified consistently, focus moves to the first error, and the user remains on the current screen.',
@@ -71,11 +75,13 @@ function generateCases(data) {
   if (data.coverage === 'Thorough') {
     cases.push({
       id: 'TC-004', type: 'Boundary', priority: 'Medium', title: `${title} — boundary values`, ...caseContext,
+      description: describe('Verifies behavior at and immediately beyond the supported input limits'),
       precondition: base,
       steps: [...steps.slice(0, 1), 'Enter minimum and maximum accepted values', 'Repeat with values just outside the accepted limits'],
       expected: 'Values at valid boundaries are accepted; values beyond the limits are rejected with a precise validation message.',
     }, {
       id: 'TC-005', type: 'Resilience', priority: 'Low', title: `${title} — repeated submission`, ...caseContext,
+      description: describe('Verifies that repeating the final action does not create duplicate or inconsistent results'),
       precondition: base,
       steps: [...steps, 'Immediately repeat the final action'],
       expected: 'The application handles the repeated action safely without duplicate records, inconsistent state, or unexpected errors.',
@@ -112,6 +118,7 @@ function TestCase({ item, open, onToggle }) {
       <span className="case-chevron">{icons.chevron}</span>
     </button>
     {open && <div className="case-body">
+      <section><h4>Description</h4><p>{item.description}</p></section>
       <section><h4>Precondition</h4><p>{item.precondition}</p></section>
       <section><h4>Test steps</h4><ol>{item.steps.map((step, i) => <li key={i}><span>{i + 1}</span><p>{step}</p></li>)}</ol></section>
       <section className="expected"><h4>Expected result</h4><p><i>{icons.check}</i>{item.expected}</p></section>
@@ -181,7 +188,7 @@ export default function App() {
     }
   }
 
-  const suiteText = () => cases.map(c => `${c.id}: ${c.title}\nModule: ${c.module}\nSub-Module: ${c.subModule}\nType: ${c.type} | Priority: ${c.priority}\nPrecondition: ${c.precondition}\nSteps:\n${c.steps.map((s,i) => `${i+1}. ${s}`).join('\n')}\nExpected: ${c.expected}`).join('\n\n---\n\n')
+  const suiteText = () => cases.map(c => `${c.id}: ${c.title}\nModule: ${c.module}\nSub-Module: ${c.subModule}\nType: ${c.type} | Priority: ${c.priority}\nDescription: ${c.description}\nPrecondition: ${c.precondition}\nSteps:\n${c.steps.map((s,i) => `${i+1}. ${s}`).join('\n')}\nExpected: ${c.expected}`).join('\n\n---\n\n')
   const copy = async () => { await navigator.clipboard.writeText(suiteText()); setNotice('Copied to clipboard'); setTimeout(() => setNotice(''), 2000) }
   const download = () => {
     const headers = ['Test Cases #', 'Priority', 'Module', 'Sub-Module', 'Test Scenario', 'Description', 'Pre-Condition', 'Steps / Test Data', 'Expected Result', 'Actual Result', 'Status', 'Bug Link/ID', 'Tester', 'Date Tested', 'Remarks']
