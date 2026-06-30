@@ -25,12 +25,12 @@ const example = {
   issueTitle: 'Reset password using a registered email address',
   issueDetails: 'A registered user should receive a secure password reset link. The link expires after 30 minutes and can only be used once.',
   precondition: 'User has an active account and access to the registered email inbox.',
-  testSteps: 'Open the sign-in page\nSelect â€œForgot passwordâ€\nEnter a registered email address\nOpen the reset email\nFollow the secure link\nEnter and confirm a new password\nSign in with the new password',
+  testSteps: 'Open the sign-in page\nSelect “Forgot password”\nEnter a registered email address\nOpen the reset email\nFollow the secure link\nEnter and confirm a new password\nSign in with the new password',
   priority: 'High', coverage: 'Balanced',
 }
 
 function cleanStep(step) {
-  return step.replace(/^\s*(?:\d+[.)]|[-*â€¢])\s*/, '').trim()
+  return step.replace(/^\s*(?:\d+[.)]|[-*•])\s*/, '').trim()
 }
 
 function generateCases(data) {
@@ -49,7 +49,7 @@ function generateCases(data) {
   }
 
   const cases = [{
-    id: 'TC-001', type: 'Positive', priority: data.priority, title: `${title} â€” happy path`, ...caseContext,
+    id: 'TC-001', type: 'Positive', priority: data.priority, title: `${title} — happy path`, ...caseContext,
     description: describe('Verifies that the complete valid user workflow succeeds'),
     precondition: base, steps, expected,
   }]
@@ -57,14 +57,14 @@ function generateCases(data) {
   if (data.coverage !== 'Focused') {
     cases.push({
       id: 'TC-002', type: 'Negative', priority: data.priority === 'Low' ? 'Medium' : data.priority,
-      title: `${title} â€” reject invalid input`, ...caseContext,
+      title: `${title} — reject invalid input`, ...caseContext,
       description: describe('Verifies that missing, malformed, or invalid input is rejected safely'),
       precondition: base,
       steps: [...steps.slice(0, Math.max(1, steps.length - 1)), 'Provide missing, malformed, or invalid input', 'Submit the request'],
       expected: 'The request is not completed. A clear, actionable validation message is shown and no invalid data is saved.',
     })
     cases.push({
-      id: 'TC-003', type: 'Validation', priority: 'Medium', title: `${title} â€” required-field validation`, ...caseContext,
+      id: 'TC-003', type: 'Validation', priority: 'Medium', title: `${title} — required-field validation`, ...caseContext,
       description: describe('Verifies that required-field rules provide clear and consistent feedback'),
       precondition: base,
       steps: [steps[0], 'Leave all required fields empty', 'Attempt to continue or submit'],
@@ -74,13 +74,13 @@ function generateCases(data) {
 
   if (data.coverage === 'Thorough') {
     cases.push({
-      id: 'TC-004', type: 'Boundary', priority: 'Medium', title: `${title} â€” boundary values`, ...caseContext,
+      id: 'TC-004', type: 'Boundary', priority: 'Medium', title: `${title} — boundary values`, ...caseContext,
       description: describe('Verifies behavior at and immediately beyond the supported input limits'),
       precondition: base,
       steps: [...steps.slice(0, 1), 'Enter minimum and maximum accepted values', 'Repeat with values just outside the accepted limits'],
       expected: 'Values at valid boundaries are accepted; values beyond the limits are rejected with a precise validation message.',
     }, {
-      id: 'TC-005', type: 'Resilience', priority: 'Low', title: `${title} â€” repeated submission`, ...caseContext,
+      id: 'TC-005', type: 'Resilience', priority: 'Low', title: `${title} — repeated submission`, ...caseContext,
       description: describe('Verifies that repeating the final action does not create duplicate or inconsistent results'),
       precondition: base,
       steps: [...steps, 'Immediately repeat the final action'],
@@ -113,7 +113,7 @@ function TestCase({ item, open, onToggle }) {
   return <article className={`test-case ${open ? 'open' : ''}`}>
     <button className="case-head" onClick={onToggle} aria-expanded={open}>
       <span className={`case-type ${item.type.toLowerCase()}`}>{item.type}</span>
-      <span className="case-heading"><small>{item.id} Â· {[item.module, item.subModule].filter(Boolean).join(' / ')}</small><strong>{item.title}</strong></span>
+      <span className="case-heading"><small>{item.id} · {[item.module, item.subModule].filter(Boolean).join(' / ')}</small><strong>{item.title}</strong></span>
       <span className={`priority ${item.priority.toLowerCase()}`}>{item.priority}</span>
       <span className="case-chevron">{icons.chevron}</span>
     </button>
@@ -126,8 +126,23 @@ function TestCase({ item, open, onToggle }) {
   </article>
 }
 
+const STORAGE_KEY = 'casecraft-form'
+
+function loadDraft() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')
+    return saved && typeof saved === 'object' ? { ...blankForm, ...saved } : blankForm
+  } catch {
+    return blankForm
+  }
+}
+
+function normalizeCases(inputCases) {
+  return Array.isArray(inputCases) ? inputCases.filter(item => item && Array.isArray(item.steps)) : []
+}
+
 export default function App() {
-  const [form, setForm] = useState(() => JSON.parse(localStorage.getItem('casecraft-form') || 'null') || blankForm)
+  const [form, setForm] = useState(loadDraft)
   const [cases, setCases] = useState([])
   const [openCases, setOpenCases] = useState([0])
   const [notice, setNotice] = useState('')
@@ -137,7 +152,7 @@ export default function App() {
   const [accessCode, setAccessCode] = useState('')
   const [caseSource, setCaseSource] = useState('standard')
 
-  useEffect(() => { localStorage.setItem('casecraft-form', JSON.stringify(form)) }, [form])
+  useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(form)) }, [form])
   const completed = useMemo(() => ['mainModule','subModule','issueTitle','issueDetails','precondition','testSteps'].filter(k => form[k].trim()).length, [form])
 
   const update = (key, value) => {
@@ -174,10 +189,18 @@ export default function App() {
         headers: { 'Content-Type': 'application/json', 'x-app-access-code': accessCode.trim() },
         body: JSON.stringify(form),
       })
-      const payload = await response.json()
+      const responseText = await response.text()
+      let payload = {}
+      try {
+        payload = responseText ? JSON.parse(responseText) : {}
+      } catch {
+        throw new Error('AI endpoint did not return JSON.')
+      }
       if (!response.ok) throw new Error(payload.error || 'AI generation failed.')
-      setCases(payload.cases); setOpenCases([0]); setCaseSource('ai')
-      setNotice(`${payload.cases.length} real-world AI test cases generated`)
+      const aiCases = normalizeCases(payload.cases)
+      if (!aiCases.length) throw new Error('AI returned an empty test suite.')
+      setCases(aiCases); setOpenCases([0]); setCaseSource('ai')
+      setNotice(`${aiCases.length} real-world AI test cases generated`)
     } catch (error) {
       const fallback = generateCases(form)
       setCases(fallback); setOpenCases([0]); setCaseSource('standard')
@@ -189,7 +212,15 @@ export default function App() {
   }
 
   const suiteText = () => cases.map(c => `${c.id}: ${c.title}\nModule: ${c.module}\nSub-Module: ${c.subModule}\nType: ${c.type} | Priority: ${c.priority}\nDescription: ${c.description}\nPrecondition: ${c.precondition}\nSteps:\n${c.steps.map((s,i) => `${i+1}. ${s}`).join('\n')}\nExpected: ${c.expected}`).join('\n\n---\n\n')
-  const copy = async () => { await navigator.clipboard.writeText(suiteText()); setNotice('Copied to clipboard'); setTimeout(() => setNotice(''), 2000) }
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(suiteText())
+      setNotice('Copied to clipboard')
+    } catch {
+      setNotice('Copy failed. Download the CSV instead.')
+    }
+    setTimeout(() => setNotice(''), 2000)
+  }
   const download = () => {
     const headers = ['Test Cases #', 'Priority', 'Module', 'Sub-Module', 'Test Scenario', 'Description', 'Pre-Condition', 'Steps / Test Data', 'Expected Result', 'Actual Result', 'Status', 'Bug Link/ID', 'Tester', 'Date Tested', 'Remarks']
     const escapeCsv = value => `"${String(value ?? '').replace(/"/g, '""')}"`
@@ -208,7 +239,7 @@ export default function App() {
     const csv = [headers, ...rows].map(row => row.map(escapeCsv).join(',')).join('\r\n')
     const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' })
     const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob); a.download = 'test-case-suite.csv'; a.click(); URL.revokeObjectURL(a.href)
+    const url = URL.createObjectURL(blob); a.href = url; a.download = 'test-case-suite.csv'; a.click(); URL.revokeObjectURL(url)
     setNotice('CSV downloaded'); setTimeout(() => setNotice(''), 2000)
   }
 
@@ -223,7 +254,7 @@ export default function App() {
       <div className="sidebar-bottom">
         <div className="tip"><i>{icons.spark}</i><strong>Quick tip</strong><p>Add clear steps for more precise test cases.</p></div>
         <button className="settings"><i>{icons.settings}</i><span>Settings</span></button>
-        <div className="profile"><span>IA</span><p><strong>Isaac</strong><small>QA Engineer</small></p><b>â€¢â€¢â€¢</b></div>
+        <div className="profile"><span>IA</span><p><strong>Isaac</strong><small>QA Engineer</small></p><b>•••</b></div>
       </div>
     </aside>
 
@@ -253,14 +284,14 @@ export default function App() {
           </div>
 
           <div className="form-actions">
-            <button className="clear" onClick={() => { setForm(blankForm); setCases([]); setErrors({}) }}>{icons.trash}<span>Clear</span></button>
+            <button className="clear" onClick={() => { setForm(blankForm); setCases([]); setErrors({}); setAccessCode(''); setNotice('Draft cleared'); setTimeout(() => setNotice(''), 1600) }}>{icons.trash}<span>Clear</span></button>
             <button className="example" onClick={() => { setForm(example); setErrors({}) }}>Use example</button>
-            <button className="generate" onClick={generate} disabled={generating}>{generating ? <span className="spinner"/> : icons.wand}<span>{generating ? 'Analyzing real-world scenariosâ€¦' : aiEnabled ? 'Generate with AI' : 'Generate test cases'}</span></button>
+            <button className="generate" onClick={generate} disabled={generating}>{generating ? <span className="spinner"/> : icons.wand}<span>{generating ? 'Analyzing real-world scenarios…' : aiEnabled ? 'Generate with AI' : 'Generate test cases'}</span></button>
           </div>
         </section>
 
         <section className="result-panel">
-          <div className="result-head"><div><span>02</span><div><h2>{cases.length && caseSource === 'ai' ? 'AI-generated suite' : 'Generated suite'}</h2><p>{cases.length ? `${cases.length} test cases Â· ${form.mainModule}` : 'Ready when you are'}</p></div></div>
+          <div className="result-head"><div><span>02</span><div><h2>{cases.length && caseSource === 'ai' ? 'AI-generated suite' : 'Generated suite'}</h2><p>{cases.length ? `${cases.length} test cases · ${form.mainModule}` : 'Ready when you are'}</p></div></div>
             {cases.length > 0 && <aside><button onClick={copy} title="Copy suite">{icons.copy}</button><button onClick={download} title="Download suite">{icons.download}</button></aside>}
           </div>
           {cases.length === 0 ? <EmptyState /> : <div className="cases-list">

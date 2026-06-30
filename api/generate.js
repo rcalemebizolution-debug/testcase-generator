@@ -61,18 +61,24 @@ function normalizeLabel(value, allowed, fallback) {
 }
 
 function normalizeCase(testCase, index, input) {
-  const title = String(testCase.title || '').trim()
+  const title = String(testCase.title || '').trim() || input.issueTitle
   const negativeFallback = /invalid|reject|prevent|denied|failure|error|missing|unauthori[sz]ed/i.test(title)
   const description = String(testCase.description || '').trim()
+  const steps = Array.isArray(testCase.steps)
+    ? testCase.steps.map(step => String(step || '').trim()).filter(Boolean)
+    : []
 
   return {
-    ...testCase,
     id: `TC-${String(index + 1).padStart(3, '0')}`,
     type: normalizeLabel(testCase.type, CASE_TYPES, negativeFallback ? 'Negative' : 'Positive'),
     priority: normalizeLabel(testCase.priority, PRIORITIES, 'Medium'),
+    title,
     module: input.mainModule,
     subModule: input.subModule,
     description: description || `Verifies "${input.issueTitle}" based on the reported issue: ${input.issueDetails}`,
+    precondition: String(testCase.precondition || input.precondition || 'User has access to the application.').trim(),
+    steps: steps.length >= 2 ? steps : ['Open the relevant feature', 'Perform the test action', 'Observe the result'],
+    expected: String(testCase.expected || 'The result is observable and matches the issue requirements.').trim(),
   }
 }
 
@@ -96,7 +102,9 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Required issue details are missing.' })
   }
 
-  const safeInput = Object.fromEntries(Object.entries(input).map(([key, value]) => [key, String(value).slice(0, 4000)]))
+  const safeInput = Object.fromEntries(
+    Object.entries(input).map(([key, value]) => [key, String(value).trim().slice(0, 4000)]),
+  )
   const desiredCount = safeInput.coverage === 'Thorough' ? 8 : safeInput.coverage === 'Focused' ? 3 : 5
 
   try {
@@ -139,7 +147,10 @@ export default async function handler(req, res) {
     if (!outputText) return res.status(502).json({ error: 'The AI returned no test cases. Please try again.' })
 
     const parsed = JSON.parse(outputText)
-    const cases = parsed.cases.map((testCase, index) => normalizeCase(testCase, index, safeInput))
+    const cases = Array.isArray(parsed.cases)
+      ? parsed.cases.map((testCase, index) => normalizeCase(testCase, index, safeInput)).slice(0, 10)
+      : []
+    if (cases.length < 3) return res.status(502).json({ error: 'The AI returned too few usable test cases. Please try again.' })
     return res.status(200).json({ cases, model })
   } catch (error) {
     console.error('AI generation failed:', error)

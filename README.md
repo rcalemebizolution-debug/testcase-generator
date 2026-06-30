@@ -4,7 +4,7 @@ A responsive React application that creates structured QA test cases from a modu
 
 ## Run locally
 
-```powershell
+```bash
 npm install
 npm run dev
 ```
@@ -13,7 +13,7 @@ npm run dev
 
 AI enhanced mode uses Groq through a secure Vercel serverless function. Standard rules remain available as a free fallback.
 
-Add these environment variables in **Vercel -> Project -> Settings -> Environment Variables**:
+Copy `.env.example` for local reference, then add these environment variables in **Vercel -> Project -> Settings -> Environment Variables**:
 
 - `GROQ_API_KEY`: your Groq Console API key
 - `AI_ACCESS_CODE`: a private code you type in the app
