@@ -1,10 +1,4 @@
-import {
-  estimateInputTokens,
-  getLicenseByKey,
-  recordLicenseUsage,
-  storageConfigured,
-  summarizeQuota,
-} from './_lib/licenses.js'
+import { timingSafeEqual } from 'node:crypto'
 
 const RATE_WINDOW_MS = 60_000
 const RATE_LIMIT = 8
@@ -12,6 +6,13 @@ const CASE_TYPES = ['Positive', 'Negative', 'Validation', 'Boundary', 'Security'
 const PRIORITIES = ['Low', 'Medium', 'High', 'Critical']
 const rateStore = globalThis.__casecraftRateStore || new Map()
 globalThis.__casecraftRateStore = rateStore
+
+function matchesSecret(received, expected) {
+  if (!received || !expected) return false
+  const a = Buffer.from(received)
+  const b = Buffer.from(expected)
+  return a.length === b.length && timingSafeEqual(a, b)
+}
 
 function isRateLimited(ip) {
   const now = Date.now()
@@ -78,12 +79,12 @@ function normalizeCase(testCase, index, input) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed.' })
 
-  if (!process.env.GROQ_API_KEY) {
-    return res.status(503).json({ error: 'AI is not configured yet. Add GROQ_API_KEY in Vercel.' })
+  if (!process.env.GROQ_API_KEY || !process.env.AI_ACCESS_CODE) {
+    return res.status(503).json({ error: 'AI is not configured yet. Add GROQ_API_KEY and AI_ACCESS_CODE in Vercel.' })
   }
 
-  if (!storageConfigured()) {
-    return res.status(503).json({ error: 'License storage is not configured yet. Add Upstash Redis credentials in Vercel.' })
+  if (!matchesSecret(req.headers['x-app-access-code'], process.env.AI_ACCESS_CODE)) {
+    return res.status(401).json({ error: 'The AI access code is incorrect.' })
   }
 
   const ip = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown').split(',')[0].trim()
@@ -97,37 +98,10 @@ export default async function handler(req, res) {
 
   const safeInput = Object.fromEntries(Object.entries(input).map(([key, value]) => [key, String(value).slice(0, 4000)]))
   const desiredCount = safeInput.coverage === 'Thorough' ? 8 : safeInput.coverage === 'Focused' ? 3 : 5
-  const licenseKey = String(req.headers['x-license-key'] || req.headers['x-app-access-code'] || '').trim()
-
-  if (!licenseKey) {
-    return res.status(401).json({ error: 'A valid license key is required for AI generation.' })
-  }
 
   try {
-    const license = await getLicenseByKey(licenseKey)
-    if (!license || !license.enabled) {
-      return res.status(401).json({ error: 'The license key is invalid or disabled.' })
-    }
-
-    const quota = summarizeQuota(license)
-    if (quota.remainingGenerations <= 0) {
-      return res.status(402).json({ error: 'This license has no AI generations left this month.', quota })
-    }
-
     const model = process.env.GROQ_MODEL || 'openai/gpt-oss-120b'
     const systemPrompt = `You are a senior QA engineer creating practical, real-world manual test cases. Return exactly ${desiredCount} distinct cases. Use the supplied module and sub-module exactly. The type field must be exactly one of: ${CASE_TYPES.join(', ')}. The priority field must be exactly one of: ${PRIORITIES.join(', ')}. Each description must clearly explain the specific scenario being verified and connect it directly to the supplied issue title and issue details. Cover realistic user behavior and the most relevant mix of happy path, invalid data, permissions, boundary values, interrupted workflows, integration failures, security, concurrency, session state, and recovery. Only include categories that genuinely apply. Make every step executable and every expected result observable and specific. Do not invent product requirements as facts; when an assumption is necessary, state it clearly in the description. Keep descriptions concise. Assign sequential IDs starting with TC-001.`
-    const maxCompletionTokens = Math.min(
-      quota.maxCompletionTokens,
-      Number.parseInt(String(process.env.MAX_COMPLETION_TOKENS_CEILING || quota.maxCompletionTokens), 10) || quota.maxCompletionTokens,
-    )
-    const reservedTokens = estimateInputTokens(safeInput, systemPrompt) + maxCompletionTokens
-
-    if (quota.remainingTokens < reservedTokens) {
-      return res.status(402).json({
-        error: 'This license does not have enough remaining AI tokens for another run this month.',
-        quota,
-      })
-    }
 
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -141,8 +115,6 @@ export default async function handler(req, res) {
           { role: 'system', content: systemPrompt },
           { role: 'user', content: `Create a test suite from this issue context:\n${JSON.stringify(safeInput, null, 2)}` },
         ],
-        max_completion_tokens: maxCompletionTokens,
-        user: license.keyHash,
         response_format: {
           type: 'json_schema',
           json_schema: {
@@ -168,23 +140,7 @@ export default async function handler(req, res) {
 
     const parsed = JSON.parse(outputText)
     const cases = parsed.cases.map((testCase, index) => normalizeCase(testCase, index, safeInput))
-    const providerTotalTokens = Number.parseInt(String(payload?.usage?.total_tokens || '0'), 10) || 0
-    const totalTokens = Math.max(reservedTokens, providerTotalTokens)
-    const usage = await recordLicenseUsage(license, { generations: 1, tokens: totalTokens })
-
-    return res.status(200).json({
-      cases,
-      model,
-      quota: usage.quota,
-      license: { label: usage.license.label },
-      usage: {
-        totalTokens,
-        providerTotalTokens,
-        reservedTokens,
-        promptTokensEstimate: reservedTokens - maxCompletionTokens,
-        maxCompletionTokens,
-      },
-    })
+    return res.status(200).json({ cases, model })
   } catch (error) {
     console.error('AI generation failed:', error)
     return res.status(500).json({ error: 'AI generation failed unexpectedly. Please try again.' })

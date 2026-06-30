@@ -25,12 +25,12 @@ const example = {
   issueTitle: 'Reset password using a registered email address',
   issueDetails: 'A registered user should receive a secure password reset link. The link expires after 30 minutes and can only be used once.',
   precondition: 'User has an active account and access to the registered email inbox.',
-  testSteps: 'Open the sign-in page\nSelect “Forgot password”\nEnter a registered email address\nOpen the reset email\nFollow the secure link\nEnter and confirm a new password\nSign in with the new password',
+  testSteps: 'Open the sign-in page\nSelect â€œForgot passwordâ€\nEnter a registered email address\nOpen the reset email\nFollow the secure link\nEnter and confirm a new password\nSign in with the new password',
   priority: 'High', coverage: 'Balanced',
 }
 
 function cleanStep(step) {
-  return step.replace(/^\s*(?:\d+[.)]|[-*•])\s*/, '').trim()
+  return step.replace(/^\s*(?:\d+[.)]|[-*â€¢])\s*/, '').trim()
 }
 
 function generateCases(data) {
@@ -49,7 +49,7 @@ function generateCases(data) {
   }
 
   const cases = [{
-    id: 'TC-001', type: 'Positive', priority: data.priority, title: `${title} — happy path`, ...caseContext,
+    id: 'TC-001', type: 'Positive', priority: data.priority, title: `${title} â€” happy path`, ...caseContext,
     description: describe('Verifies that the complete valid user workflow succeeds'),
     precondition: base, steps, expected,
   }]
@@ -57,14 +57,14 @@ function generateCases(data) {
   if (data.coverage !== 'Focused') {
     cases.push({
       id: 'TC-002', type: 'Negative', priority: data.priority === 'Low' ? 'Medium' : data.priority,
-      title: `${title} — reject invalid input`, ...caseContext,
+      title: `${title} â€” reject invalid input`, ...caseContext,
       description: describe('Verifies that missing, malformed, or invalid input is rejected safely'),
       precondition: base,
       steps: [...steps.slice(0, Math.max(1, steps.length - 1)), 'Provide missing, malformed, or invalid input', 'Submit the request'],
       expected: 'The request is not completed. A clear, actionable validation message is shown and no invalid data is saved.',
     })
     cases.push({
-      id: 'TC-003', type: 'Validation', priority: 'Medium', title: `${title} — required-field validation`, ...caseContext,
+      id: 'TC-003', type: 'Validation', priority: 'Medium', title: `${title} â€” required-field validation`, ...caseContext,
       description: describe('Verifies that required-field rules provide clear and consistent feedback'),
       precondition: base,
       steps: [steps[0], 'Leave all required fields empty', 'Attempt to continue or submit'],
@@ -74,13 +74,13 @@ function generateCases(data) {
 
   if (data.coverage === 'Thorough') {
     cases.push({
-      id: 'TC-004', type: 'Boundary', priority: 'Medium', title: `${title} — boundary values`, ...caseContext,
+      id: 'TC-004', type: 'Boundary', priority: 'Medium', title: `${title} â€” boundary values`, ...caseContext,
       description: describe('Verifies behavior at and immediately beyond the supported input limits'),
       precondition: base,
       steps: [...steps.slice(0, 1), 'Enter minimum and maximum accepted values', 'Repeat with values just outside the accepted limits'],
       expected: 'Values at valid boundaries are accepted; values beyond the limits are rejected with a precise validation message.',
     }, {
-      id: 'TC-005', type: 'Resilience', priority: 'Low', title: `${title} — repeated submission`, ...caseContext,
+      id: 'TC-005', type: 'Resilience', priority: 'Low', title: `${title} â€” repeated submission`, ...caseContext,
       description: describe('Verifies that repeating the final action does not create duplicate or inconsistent results'),
       precondition: base,
       steps: [...steps, 'Immediately repeat the final action'],
@@ -113,7 +113,7 @@ function TestCase({ item, open, onToggle }) {
   return <article className={`test-case ${open ? 'open' : ''}`}>
     <button className="case-head" onClick={onToggle} aria-expanded={open}>
       <span className={`case-type ${item.type.toLowerCase()}`}>{item.type}</span>
-      <span className="case-heading"><small>{item.id} · {[item.module, item.subModule].filter(Boolean).join(' / ')}</small><strong>{item.title}</strong></span>
+      <span className="case-heading"><small>{item.id} Â· {[item.module, item.subModule].filter(Boolean).join(' / ')}</small><strong>{item.title}</strong></span>
       <span className={`priority ${item.priority.toLowerCase()}`}>{item.priority}</span>
       <span className="case-chevron">{icons.chevron}</span>
     </button>
@@ -134,10 +134,8 @@ export default function App() {
   const [errors, setErrors] = useState({})
   const [generating, setGenerating] = useState(false)
   const [aiEnabled, setAiEnabled] = useState(true)
-  const [licenseKey, setLicenseKey] = useState('')
+  const [accessCode, setAccessCode] = useState('')
   const [caseSource, setCaseSource] = useState('standard')
-  const [quota, setQuota] = useState(null)
-  const [licenseLabel, setLicenseLabel] = useState('')
 
   useEffect(() => { localStorage.setItem('casecraft-form', JSON.stringify(form)) }, [form])
   const completed = useMemo(() => ['mainModule','subModule','issueTitle','issueDetails','precondition','testSteps'].filter(k => form[k].trim()).length, [form])
@@ -155,8 +153,8 @@ export default function App() {
       setTimeout(() => setNotice(''), 2400)
       return
     }
-    if (aiEnabled && !licenseKey.trim()) {
-      setNotice('Enter your license key, or choose Standard rules.')
+    if (aiEnabled && !accessCode.trim()) {
+      setNotice('Enter your AI access code, or choose Standard rules.')
       setTimeout(() => setNotice(''), 3000)
       return
     }
@@ -165,8 +163,6 @@ export default function App() {
     if (!aiEnabled) {
       const next = generateCases(form)
       setCases(next); setOpenCases([0]); setGenerating(false); setCaseSource('standard')
-      setQuota(null)
-      setLicenseLabel('')
       setNotice(`${next.length} test cases generated`)
       setTimeout(() => setNotice(''), 2400)
       return
@@ -175,20 +171,16 @@ export default function App() {
     try {
       const response = await fetch('/api/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-license-key': licenseKey.trim() },
+        headers: { 'Content-Type': 'application/json', 'x-app-access-code': accessCode.trim() },
         body: JSON.stringify(form),
       })
       const payload = await response.json()
       if (!response.ok) throw new Error(payload.error || 'AI generation failed.')
       setCases(payload.cases); setOpenCases([0]); setCaseSource('ai')
-      setQuota(payload.quota || null)
-      setLicenseLabel(payload.license?.label || '')
-      setNotice(`${payload.cases.length} AI test cases generated${payload.quota ? ` • ${payload.quota.remainingGenerations} runs left this month` : ''}`)
+      setNotice(`${payload.cases.length} real-world AI test cases generated`)
     } catch (error) {
       const fallback = generateCases(form)
       setCases(fallback); setOpenCases([0]); setCaseSource('standard')
-      setQuota(null)
-      setLicenseLabel('')
       setNotice(`AI unavailable: ${error.message} Standard cases generated instead.`)
     } finally {
       setGenerating(false)
@@ -231,7 +223,7 @@ export default function App() {
       <div className="sidebar-bottom">
         <div className="tip"><i>{icons.spark}</i><strong>Quick tip</strong><p>Add clear steps for more precise test cases.</p></div>
         <button className="settings"><i>{icons.settings}</i><span>Settings</span></button>
-        <div className="profile"><span>IA</span><p><strong>Isaac</strong><small>QA Engineer</small></p><b>•••</b></div>
+        <div className="profile"><span>IA</span><p><strong>Isaac</strong><small>QA Engineer</small></p><b>â€¢â€¢â€¢</b></div>
       </div>
     </aside>
 
@@ -257,23 +249,18 @@ export default function App() {
             <Field label="Priority"><select value={form.priority} onChange={e => update('priority', e.target.value)}><option>Low</option><option>Medium</option><option>High</option><option>Critical</option></select></Field>
             <Field label="Coverage"><select value={form.coverage} onChange={e => update('coverage', e.target.value)}><option>Focused</option><option>Balanced</option><option>Thorough</option></select></Field>
             <Field label="Generation mode"><select value={aiEnabled ? 'AI enhanced' : 'Standard rules'} onChange={e => setAiEnabled(e.target.value === 'AI enhanced')}><option>AI enhanced</option><option>Standard rules</option></select></Field>
-            {aiEnabled && <Field label="License key" hint="Not saved"><input type="password" value={licenseKey} onChange={e => setLicenseKey(e.target.value)} placeholder="Enter the paid AI license key" autoComplete="off" /></Field>}
+            {aiEnabled && <Field label="AI access code" hint="Not saved"><input type="password" value={accessCode} onChange={e => setAccessCode(e.target.value)} placeholder="Enter your private code" autoComplete="off" /></Field>}
           </div>
-          {aiEnabled && quota && <div className="tip">
-            <i>{icons.spark}</i>
-            <strong>{licenseLabel || 'Active license'}</strong>
-            <p>{quota.remainingGenerations} AI runs left in {quota.periodKey}. {quota.remainingTokens.toLocaleString()} tokens remaining.</p>
-          </div>}
 
           <div className="form-actions">
-            <button className="clear" onClick={() => { setForm(blankForm); setCases([]); setErrors({}); setQuota(null); setLicenseLabel('') }}>{icons.trash}<span>Clear</span></button>
-            <button className="example" onClick={() => { setForm(example); setErrors({}); setQuota(null); setLicenseLabel('') }}>Use example</button>
-            <button className="generate" onClick={generate} disabled={generating}>{generating ? <span className="spinner"/> : icons.wand}<span>{generating ? 'Analyzing real-world scenarios…' : aiEnabled ? 'Generate with AI' : 'Generate test cases'}</span></button>
+            <button className="clear" onClick={() => { setForm(blankForm); setCases([]); setErrors({}) }}>{icons.trash}<span>Clear</span></button>
+            <button className="example" onClick={() => { setForm(example); setErrors({}) }}>Use example</button>
+            <button className="generate" onClick={generate} disabled={generating}>{generating ? <span className="spinner"/> : icons.wand}<span>{generating ? 'Analyzing real-world scenariosâ€¦' : aiEnabled ? 'Generate with AI' : 'Generate test cases'}</span></button>
           </div>
         </section>
 
         <section className="result-panel">
-          <div className="result-head"><div><span>02</span><div><h2>{cases.length && caseSource === 'ai' ? 'AI-generated suite' : 'Generated suite'}</h2><p>{cases.length ? `${cases.length} test cases · ${form.mainModule}` : 'Ready when you are'}</p></div></div>
+          <div className="result-head"><div><span>02</span><div><h2>{cases.length && caseSource === 'ai' ? 'AI-generated suite' : 'Generated suite'}</h2><p>{cases.length ? `${cases.length} test cases Â· ${form.mainModule}` : 'Ready when you are'}</p></div></div>
             {cases.length > 0 && <aside><button onClick={copy} title="Copy suite">{icons.copy}</button><button onClick={download} title="Download suite">{icons.download}</button></aside>}
           </div>
           {cases.length === 0 ? <EmptyState /> : <div className="cases-list">
