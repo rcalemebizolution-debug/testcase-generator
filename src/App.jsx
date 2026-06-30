@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import { createSuiteSnapshot, updateCaseField, updateCaseSteps } from './suiteStorage.js'
+import { loginUser, registerUser } from './authStorage.js'
 
 const icons = {
   spark: <svg viewBox="0 0 24 24"><path d="m12 3 .8 4.2a5 5 0 0 0 4 4l4.2.8-4.2.8a5 5 0 0 0-4 4L12 21l-.8-4.2a5 5 0 0 0-4-4L3 12l4.2-.8a5 5 0 0 0 4-4L12 3Z"/></svg>,
@@ -109,7 +111,7 @@ function EmptyState() {
   </div>
 }
 
-function TestCase({ item, open, onToggle }) {
+function TestCase({ item, open, onToggle, editing, onEditToggle, onFieldChange, onStepsChange }) {
   return <article className={`test-case ${open ? 'open' : ''}`}>
     <button className="case-head" onClick={onToggle} aria-expanded={open}>
       <span className={`case-type ${item.type.toLowerCase()}`}>{item.type}</span>
@@ -118,15 +120,29 @@ function TestCase({ item, open, onToggle }) {
       <span className="case-chevron">{icons.chevron}</span>
     </button>
     {open && <div className="case-body">
-      <section><h4>Description</h4><p>{item.description}</p></section>
-      <section><h4>Precondition</h4><p>{item.precondition}</p></section>
-      <section><h4>Test steps</h4><ol>{item.steps.map((step, i) => <li key={i}><span>{i + 1}</span><p>{step}</p></li>)}</ol></section>
-      <section className="expected"><h4>Expected result</h4><p><i>{icons.check}</i>{item.expected}</p></section>
+      <div className="case-tools"><button onClick={onEditToggle}>{editing ? 'Done editing' : 'Edit case'}</button></div>
+      {editing ? <div className="case-edit-grid">
+        <Field label="Title" wide><input value={item.title} onChange={e => onFieldChange('title', e.target.value)} /></Field>
+        <Field label="Type"><select value={item.type} onChange={e => onFieldChange('type', e.target.value)}><option>Positive</option><option>Negative</option><option>Validation</option><option>Boundary</option><option>Security</option><option>Usability</option><option>Resilience</option><option>Integration</option></select></Field>
+        <Field label="Priority"><select value={item.priority} onChange={e => onFieldChange('priority', e.target.value)}><option>Low</option><option>Medium</option><option>High</option><option>Critical</option></select></Field>
+        <Field label="Description" wide><textarea rows="3" value={item.description} onChange={e => onFieldChange('description', e.target.value)} /></Field>
+        <Field label="Precondition" wide><textarea rows="2" value={item.precondition} onChange={e => onFieldChange('precondition', e.target.value)} /></Field>
+        <Field label="Steps" wide hint="One step per line"><textarea rows="5" value={item.steps.join('\n')} onChange={e => onStepsChange(e.target.value)} /></Field>
+        <Field label="Expected result" wide><textarea rows="3" value={item.expected} onChange={e => onFieldChange('expected', e.target.value)} /></Field>
+      </div> : <>
+        <section><h4>Description</h4><p>{item.description}</p></section>
+        <section><h4>Precondition</h4><p>{item.precondition}</p></section>
+        <section><h4>Test steps</h4><ol>{item.steps.map((step, i) => <li key={i}><span>{i + 1}</span><p>{step}</p></li>)}</ol></section>
+        <section className="expected"><h4>Expected result</h4><p><i>{icons.check}</i>{item.expected}</p></section>
+      </>}
     </div>}
   </article>
 }
 
 const STORAGE_KEY = 'casecraft-form'
+const SAVED_SUITES_KEY = 'casecraft-suites'
+const USERS_KEY = 'casecraft-users'
+const SESSION_KEY = 'casecraft-session'
 
 function loadDraft() {
   try {
@@ -141,6 +157,62 @@ function normalizeCases(inputCases) {
   return Array.isArray(inputCases) ? inputCases.filter(item => item && Array.isArray(item.steps)) : []
 }
 
+function loadSavedSuites() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SAVED_SUITES_KEY) || '[]')
+    return Array.isArray(saved) ? saved : []
+  } catch {
+    return []
+  }
+}
+
+function loadUsers() {
+  try {
+    const users = JSON.parse(localStorage.getItem(USERS_KEY) || '[]')
+    return Array.isArray(users) ? users : []
+  } catch {
+    return []
+  }
+}
+
+function loadSession() {
+  try {
+    const session = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null')
+    return session && typeof session === 'object' ? session : null
+  } catch {
+    return null
+  }
+}
+
+const blankAuthForm = { name: '', email: '', password: '', confirmPassword: '' }
+
+function AuthScreen({ mode, form, error, onModeChange, onUpdate, onSubmit }) {
+  const isRegister = mode === 'register'
+  return <main className="auth-shell">
+    <section className="auth-card">
+      <div className="auth-brand"><div>{icons.spark}</div><span>casecraft<small>QA workspace</small></span></div>
+      <div className="auth-intro">
+        <span>{isRegister ? 'Create account' : 'Welcome back'}</span>
+        <h1>{isRegister ? 'Register your QA workspace' : 'Log in to Casecraft'}</h1>
+        <p>{isRegister ? 'Create a local account to access the generator and keep saved suites on this browser.' : 'Use your local account to continue managing saved test suites.'}</p>
+      </div>
+      <form className="auth-form" onSubmit={onSubmit}>
+        {isRegister && <Field label="Full name" required><input value={form.name} onChange={e => onUpdate('name', e.target.value)} placeholder="e.g. Isaac Admin" autoComplete="name" /></Field>}
+        <Field label="Email" required><input type="email" value={form.email} onChange={e => onUpdate('email', e.target.value)} placeholder="you@example.com" autoComplete="email" /></Field>
+        <Field label="Password" required hint="Min 6 chars"><input type="password" value={form.password} onChange={e => onUpdate('password', e.target.value)} placeholder="Enter password" autoComplete={isRegister ? 'new-password' : 'current-password'} /></Field>
+        {isRegister && <Field label="Confirm password" required><input type="password" value={form.confirmPassword} onChange={e => onUpdate('confirmPassword', e.target.value)} placeholder="Repeat password" autoComplete="new-password" /></Field>}
+        {error && <p className="auth-error">{error}</p>}
+        <button className="auth-submit" type="submit">{isRegister ? 'Create account' : 'Log in'}</button>
+      </form>
+      <p className="auth-switch">
+        {isRegister ? 'Already have an account?' : 'Need an account?'}{' '}
+        <button type="button" onClick={() => onModeChange(isRegister ? 'login' : 'register')}>{isRegister ? 'Log in' : 'Register'}</button>
+      </p>
+      <p className="auth-note">Local demo authentication only. Do not use this as production password storage.</p>
+    </section>
+  </main>
+}
+
 export default function App() {
   const [form, setForm] = useState(loadDraft)
   const [cases, setCases] = useState([])
@@ -151,9 +223,49 @@ export default function App() {
   const [aiEnabled, setAiEnabled] = useState(true)
   const [accessCode, setAccessCode] = useState('')
   const [caseSource, setCaseSource] = useState('standard')
+  const [savedSuites, setSavedSuites] = useState(loadSavedSuites)
+  const [activeSuiteId, setActiveSuiteId] = useState('')
+  const [editingCaseId, setEditingCaseId] = useState('')
+  const [users, setUsers] = useState(loadUsers)
+  const [session, setSession] = useState(loadSession)
+  const [authMode, setAuthMode] = useState(() => loadUsers().length ? 'login' : 'register')
+  const [authForm, setAuthForm] = useState(blankAuthForm)
+  const [authError, setAuthError] = useState('')
 
   useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(form)) }, [form])
+  useEffect(() => { localStorage.setItem(SAVED_SUITES_KEY, JSON.stringify(savedSuites)) }, [savedSuites])
+  useEffect(() => { localStorage.setItem(USERS_KEY, JSON.stringify(users)) }, [users])
+  useEffect(() => { session ? localStorage.setItem(SESSION_KEY, JSON.stringify(session)) : localStorage.removeItem(SESSION_KEY) }, [session])
   const completed = useMemo(() => ['mainModule','subModule','issueTitle','issueDetails','precondition','testSteps'].filter(k => form[k].trim()).length, [form])
+
+  const updateAuth = (key, value) => {
+    setAuthForm(form => ({ ...form, [key]: value }))
+    setAuthError('')
+  }
+
+  const submitAuth = event => {
+    event.preventDefault()
+    const result = authMode === 'register' ? registerUser(users, authForm) : loginUser(users, authForm)
+    if (!result.ok) {
+      setAuthError(result.error)
+      return
+    }
+    if (result.users) setUsers(result.users)
+    setSession(result.session)
+    setAuthForm(blankAuthForm)
+    setAuthError('')
+    setNotice(authMode === 'register' ? 'Account created. Welcome to Casecraft.' : 'Logged in successfully.')
+    setTimeout(() => setNotice(''), 2200)
+  }
+
+  const logout = () => {
+    setSession(null)
+    setAccessCode('')
+    setAuthMode('login')
+    setAuthError('')
+    setNotice('Logged out')
+    setTimeout(() => setNotice(''), 1800)
+  }
 
   const update = (key, value) => {
     setForm(f => ({ ...f, [key]: value }))
@@ -177,7 +289,7 @@ export default function App() {
 
     if (!aiEnabled) {
       const next = generateCases(form)
-      setCases(next); setOpenCases([0]); setGenerating(false); setCaseSource('standard')
+      setCases(next); setOpenCases([0]); setGenerating(false); setCaseSource('standard'); setActiveSuiteId(''); setEditingCaseId('')
       setNotice(`${next.length} test cases generated`)
       setTimeout(() => setNotice(''), 2400)
       return
@@ -199,16 +311,55 @@ export default function App() {
       if (!response.ok) throw new Error(payload.error || 'AI generation failed.')
       const aiCases = normalizeCases(payload.cases)
       if (!aiCases.length) throw new Error('AI returned an empty test suite.')
-      setCases(aiCases); setOpenCases([0]); setCaseSource('ai')
+      setCases(aiCases); setOpenCases([0]); setCaseSource('ai'); setActiveSuiteId(''); setEditingCaseId('')
       setNotice(`${aiCases.length} real-world AI test cases generated`)
     } catch (error) {
       const fallback = generateCases(form)
-      setCases(fallback); setOpenCases([0]); setCaseSource('standard')
+      setCases(fallback); setOpenCases([0]); setCaseSource('standard'); setActiveSuiteId(''); setEditingCaseId('')
       setNotice(`AI unavailable: ${error.message} Standard cases generated instead.`)
     } finally {
       setGenerating(false)
       setTimeout(() => setNotice(''), 5200)
     }
+  }
+
+  const saveSuite = () => {
+    if (!cases.length) {
+      setNotice('Generate cases before saving a suite.')
+      setTimeout(() => setNotice(''), 2200)
+      return
+    }
+    const snapshot = createSuiteSnapshot({ form, cases, source: caseSource, existingId: activeSuiteId })
+    setSavedSuites(list => [snapshot, ...list.filter(item => item.id !== snapshot.id)].slice(0, 12))
+    setActiveSuiteId(snapshot.id)
+    setNotice(activeSuiteId ? 'Saved suite updated' : 'Suite saved locally')
+    setTimeout(() => setNotice(''), 2200)
+  }
+
+  const loadSuite = suite => {
+    setForm({ ...blankForm, ...suite.form })
+    setCases(suite.cases)
+    setCaseSource(suite.source || 'standard')
+    setActiveSuiteId(suite.id)
+    setOpenCases([0])
+    setEditingCaseId('')
+    setNotice('Saved suite loaded')
+    setTimeout(() => setNotice(''), 1800)
+  }
+
+  const deleteSuite = suiteId => {
+    setSavedSuites(list => list.filter(item => item.id !== suiteId))
+    if (activeSuiteId === suiteId) setActiveSuiteId('')
+    setNotice('Saved suite deleted')
+    setTimeout(() => setNotice(''), 1800)
+  }
+
+  const updateCase = (caseId, field, value) => {
+    setCases(list => updateCaseField(list, caseId, field, value))
+  }
+
+  const updateSteps = (caseId, value) => {
+    setCases(list => updateCaseSteps(list, caseId, value))
   }
 
   const suiteText = () => cases.map(c => `${c.id}: ${c.title}\nModule: ${c.module}\nSub-Module: ${c.subModule}\nType: ${c.type} | Priority: ${c.priority}\nDescription: ${c.description}\nPrecondition: ${c.precondition}\nSteps:\n${c.steps.map((s,i) => `${i+1}. ${s}`).join('\n')}\nExpected: ${c.expected}`).join('\n\n---\n\n')
@@ -243,25 +394,27 @@ export default function App() {
     setNotice('CSV downloaded'); setTimeout(() => setNotice(''), 2000)
   }
 
+  if (!session) return <AuthScreen mode={authMode} form={authForm} error={authError} onModeChange={mode => { setAuthMode(mode); setAuthError('') }} onUpdate={updateAuth} onSubmit={submitAuth} />
+
   return <div className="app-shell">
     <aside className="sidebar">
       <div className="brand"><div>{icons.spark}</div><span>casecraft<small>QA workspace</small></span></div>
       <nav>
         <button className="active"><i>{icons.plus}</i><span>New suite</span></button>
-        <button><i>{icons.file}</i><span>My test cases</span><b>12</b></button>
-        <button><i>{icons.clock}</i><span>Recent</span></button>
+        <button onClick={() => document.querySelector('.saved-suites')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}><i>{icons.file}</i><span>My test cases</span><b>{savedSuites.length}</b></button>
+        <button onClick={() => document.querySelector('.saved-suites')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}><i>{icons.clock}</i><span>Recent</span></button>
       </nav>
       <div className="sidebar-bottom">
         <div className="tip"><i>{icons.spark}</i><strong>Quick tip</strong><p>Add clear steps for more precise test cases.</p></div>
         <button className="settings"><i>{icons.settings}</i><span>Settings</span></button>
-        <div className="profile"><span>IA</span><p><strong>Isaac</strong><small>QA Engineer</small></p><b>•••</b></div>
+        <div className="profile"><span>{session.name?.slice(0, 2).toUpperCase() || 'QA'}</span><p><strong>{session.name}</strong><small>{session.email}</small></p><button onClick={logout}>Logout</button></div>
       </div>
     </aside>
 
     <main>
       <header className="topbar">
         <div><p>Workspace <span>/</span> New test suite</p><h1>Test case generator</h1></div>
-        <div className="status"><span>Draft saved</span><i>{icons.check}</i></div>
+        <div className="status"><span>Signed in as {session.name}</span><button className="logout-top" onClick={logout}>Logout</button><i>{icons.check}</i></div>
       </header>
 
       <div className="workspace">
@@ -284,9 +437,17 @@ export default function App() {
           </div>
 
           <div className="form-actions">
-            <button className="clear" onClick={() => { setForm(blankForm); setCases([]); setErrors({}); setAccessCode(''); setNotice('Draft cleared'); setTimeout(() => setNotice(''), 1600) }}>{icons.trash}<span>Clear</span></button>
+            <button className="clear" onClick={() => { setForm(blankForm); setCases([]); setErrors({}); setAccessCode(''); setActiveSuiteId(''); setEditingCaseId(''); setNotice('Draft cleared'); setTimeout(() => setNotice(''), 1600) }}>{icons.trash}<span>Clear</span></button>
             <button className="example" onClick={() => { setForm(example); setErrors({}) }}>Use example</button>
+            {cases.length > 0 && <button className="save-suite" onClick={saveSuite}>{icons.file}<span>{activeSuiteId ? 'Update saved suite' : 'Save suite'}</span></button>}
             <button className="generate" onClick={generate} disabled={generating}>{generating ? <span className="spinner"/> : icons.wand}<span>{generating ? 'Analyzing real-world scenarios…' : aiEnabled ? 'Generate with AI' : 'Generate test cases'}</span></button>
+          </div>
+          <div className="saved-suites">
+            <div className="saved-head"><strong>Saved locally</strong><span>{savedSuites.length} suite{savedSuites.length === 1 ? '' : 's'}</span></div>
+            {savedSuites.length === 0 ? <p>No saved suites yet. Generate test cases, then select Save suite.</p> : savedSuites.map(suite => <article key={suite.id} className={suite.id === activeSuiteId ? 'active' : ''}>
+              <button onClick={() => loadSuite(suite)}><strong>{suite.title}</strong><span>{suite.caseCount} cases · {suite.module || 'No module'}</span></button>
+              <button className="delete-suite" onClick={() => deleteSuite(suite.id)} title="Delete saved suite">{icons.trash}</button>
+            </article>)}
           </div>
         </section>
 
@@ -296,7 +457,7 @@ export default function App() {
           </div>
           {cases.length === 0 ? <EmptyState /> : <div className="cases-list">
             <div className="suite-summary"><div><span>{cases.length}</span><p><strong>Total cases</strong><small>{form.coverage} coverage</small></p></div><div className="summary-types">{[...new Set(cases.map(c => c.type))].map(t => <span key={t}>{t}</span>)}</div></div>
-            {cases.map((item, i) => <TestCase key={item.id} item={item} open={openCases.includes(i)} onToggle={() => setOpenCases(o => o.includes(i) ? [] : [i])}/>) }
+            {cases.map((item, i) => <TestCase key={item.id} item={item} open={openCases.includes(i)} editing={editingCaseId === item.id} onEditToggle={() => setEditingCaseId(id => id === item.id ? '' : item.id)} onFieldChange={(field, value) => updateCase(item.id, field, value)} onStepsChange={value => updateSteps(item.id, value)} onToggle={() => setOpenCases(o => o.includes(i) ? [] : [i])}/>) }
           </div>}
         </section>
       </div>
