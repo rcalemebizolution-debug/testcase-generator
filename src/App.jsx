@@ -134,8 +134,10 @@ export default function App() {
   const [errors, setErrors] = useState({})
   const [generating, setGenerating] = useState(false)
   const [aiEnabled, setAiEnabled] = useState(true)
-  const [accessCode, setAccessCode] = useState('')
+  const [licenseKey, setLicenseKey] = useState('')
   const [caseSource, setCaseSource] = useState('standard')
+  const [quota, setQuota] = useState(null)
+  const [licenseLabel, setLicenseLabel] = useState('')
 
   useEffect(() => { localStorage.setItem('casecraft-form', JSON.stringify(form)) }, [form])
   const completed = useMemo(() => ['mainModule','subModule','issueTitle','issueDetails','precondition','testSteps'].filter(k => form[k].trim()).length, [form])
@@ -153,8 +155,8 @@ export default function App() {
       setTimeout(() => setNotice(''), 2400)
       return
     }
-    if (aiEnabled && !accessCode.trim()) {
-      setNotice('Enter your AI access code, or choose Standard rules.')
+    if (aiEnabled && !licenseKey.trim()) {
+      setNotice('Enter your license key, or choose Standard rules.')
       setTimeout(() => setNotice(''), 3000)
       return
     }
@@ -163,6 +165,8 @@ export default function App() {
     if (!aiEnabled) {
       const next = generateCases(form)
       setCases(next); setOpenCases([0]); setGenerating(false); setCaseSource('standard')
+      setQuota(null)
+      setLicenseLabel('')
       setNotice(`${next.length} test cases generated`)
       setTimeout(() => setNotice(''), 2400)
       return
@@ -171,16 +175,20 @@ export default function App() {
     try {
       const response = await fetch('/api/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-app-access-code': accessCode.trim() },
+        headers: { 'Content-Type': 'application/json', 'x-license-key': licenseKey.trim() },
         body: JSON.stringify(form),
       })
       const payload = await response.json()
       if (!response.ok) throw new Error(payload.error || 'AI generation failed.')
       setCases(payload.cases); setOpenCases([0]); setCaseSource('ai')
-      setNotice(`${payload.cases.length} real-world AI test cases generated`)
+      setQuota(payload.quota || null)
+      setLicenseLabel(payload.license?.label || '')
+      setNotice(`${payload.cases.length} AI test cases generated${payload.quota ? ` • ${payload.quota.remainingGenerations} runs left this month` : ''}`)
     } catch (error) {
       const fallback = generateCases(form)
       setCases(fallback); setOpenCases([0]); setCaseSource('standard')
+      setQuota(null)
+      setLicenseLabel('')
       setNotice(`AI unavailable: ${error.message} Standard cases generated instead.`)
     } finally {
       setGenerating(false)
@@ -249,12 +257,17 @@ export default function App() {
             <Field label="Priority"><select value={form.priority} onChange={e => update('priority', e.target.value)}><option>Low</option><option>Medium</option><option>High</option><option>Critical</option></select></Field>
             <Field label="Coverage"><select value={form.coverage} onChange={e => update('coverage', e.target.value)}><option>Focused</option><option>Balanced</option><option>Thorough</option></select></Field>
             <Field label="Generation mode"><select value={aiEnabled ? 'AI enhanced' : 'Standard rules'} onChange={e => setAiEnabled(e.target.value === 'AI enhanced')}><option>AI enhanced</option><option>Standard rules</option></select></Field>
-            {aiEnabled && <Field label="AI access code" hint="Not saved"><input type="password" value={accessCode} onChange={e => setAccessCode(e.target.value)} placeholder="Enter your private code" autoComplete="off" /></Field>}
+            {aiEnabled && <Field label="License key" hint="Not saved"><input type="password" value={licenseKey} onChange={e => setLicenseKey(e.target.value)} placeholder="Enter the paid AI license key" autoComplete="off" /></Field>}
           </div>
+          {aiEnabled && quota && <div className="tip">
+            <i>{icons.spark}</i>
+            <strong>{licenseLabel || 'Active license'}</strong>
+            <p>{quota.remainingGenerations} AI runs left in {quota.periodKey}. {quota.remainingTokens.toLocaleString()} tokens remaining.</p>
+          </div>}
 
           <div className="form-actions">
-            <button className="clear" onClick={() => { setForm(blankForm); setCases([]); setErrors({}) }}>{icons.trash}<span>Clear</span></button>
-            <button className="example" onClick={() => { setForm(example); setErrors({}) }}>Use example</button>
+            <button className="clear" onClick={() => { setForm(blankForm); setCases([]); setErrors({}); setQuota(null); setLicenseLabel('') }}>{icons.trash}<span>Clear</span></button>
+            <button className="example" onClick={() => { setForm(example); setErrors({}); setQuota(null); setLicenseLabel('') }}>Use example</button>
             <button className="generate" onClick={generate} disabled={generating}>{generating ? <span className="spinner"/> : icons.wand}<span>{generating ? 'Analyzing real-world scenarios…' : aiEnabled ? 'Generate with AI' : 'Generate test cases'}</span></button>
           </div>
         </section>
