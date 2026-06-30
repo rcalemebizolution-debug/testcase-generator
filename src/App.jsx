@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createSuiteSnapshot, updateCaseField, updateCaseSteps } from './suiteStorage.js'
 import { loginUser, registerUser } from './authStorage.js'
+import { loadAppData, saveDraftToDatabase, saveSessionToDatabase, saveSuitesToDatabase, saveUsersToDatabase } from './appDatabase.js'
 
 const icons = {
   spark: <svg viewBox="0 0 24 24"><path d="m12 3 .8 4.2a5 5 0 0 0 4 4l4.2.8-4.2.8a5 5 0 0 0-4 4L12 21l-.8-4.2a5 5 0 0 0-4-4L3 12l4.2-.8a5 5 0 0 0 4-4L12 3Z"/></svg>,
@@ -214,7 +215,7 @@ function AuthScreen({ mode, form, error, onModeChange, onUpdate, onSubmit }) {
 }
 
 export default function App() {
-  const [form, setForm] = useState(loadDraft)
+  const [form, setForm] = useState(blankForm)
   const [cases, setCases] = useState([])
   const [openCases, setOpenCases] = useState([0])
   const [notice, setNotice] = useState('')
@@ -223,19 +224,36 @@ export default function App() {
   const [aiEnabled, setAiEnabled] = useState(true)
   const [accessCode, setAccessCode] = useState('')
   const [caseSource, setCaseSource] = useState('standard')
-  const [savedSuites, setSavedSuites] = useState(loadSavedSuites)
+  const [savedSuites, setSavedSuites] = useState([])
   const [activeSuiteId, setActiveSuiteId] = useState('')
   const [editingCaseId, setEditingCaseId] = useState('')
-  const [users, setUsers] = useState(loadUsers)
-  const [session, setSession] = useState(loadSession)
-  const [authMode, setAuthMode] = useState(() => loadUsers().length ? 'login' : 'register')
+  const [users, setUsers] = useState([])
+  const [session, setSession] = useState(null)
+  const [authMode, setAuthMode] = useState('register')
   const [authForm, setAuthForm] = useState(blankAuthForm)
   const [authError, setAuthError] = useState('')
+  const [databaseReady, setDatabaseReady] = useState(false)
 
-  useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(form)) }, [form])
-  useEffect(() => { localStorage.setItem(SAVED_SUITES_KEY, JSON.stringify(savedSuites)) }, [savedSuites])
-  useEffect(() => { localStorage.setItem(USERS_KEY, JSON.stringify(users)) }, [users])
-  useEffect(() => { session ? localStorage.setItem(SESSION_KEY, JSON.stringify(session)) : localStorage.removeItem(SESSION_KEY) }, [session])
+  useEffect(() => {
+    let active = true
+    loadAppData()
+      .then(data => {
+        if (!active) return
+        setForm({ ...blankForm, ...(data.draft || {}) })
+        setSavedSuites(data.suites || [])
+        setUsers(data.users || [])
+        setSession(data.session || null)
+        setAuthMode(data.session || data.users?.length ? 'login' : 'register')
+      })
+      .catch(() => setNotice('Database unavailable. Using a blank local workspace.'))
+      .finally(() => { if (active) setDatabaseReady(true) })
+    return () => { active = false }
+  }, [])
+
+  useEffect(() => { if (databaseReady) saveDraftToDatabase(form) }, [form, databaseReady])
+  useEffect(() => { if (databaseReady) saveSuitesToDatabase(savedSuites) }, [savedSuites, databaseReady])
+  useEffect(() => { if (databaseReady) saveUsersToDatabase(users) }, [users, databaseReady])
+  useEffect(() => { if (databaseReady) saveSessionToDatabase(session) }, [session, databaseReady])
   const completed = useMemo(() => ['mainModule','subModule','issueTitle','issueDetails','precondition','testSteps'].filter(k => form[k].trim()).length, [form])
 
   const updateAuth = (key, value) => {
@@ -393,6 +411,8 @@ export default function App() {
     const url = URL.createObjectURL(blob); a.href = url; a.download = 'test-case-suite.csv'; a.click(); URL.revokeObjectURL(url)
     setNotice('CSV downloaded'); setTimeout(() => setNotice(''), 2000)
   }
+
+  if (!databaseReady) return <main className="auth-shell"><section className="auth-card"><div className="auth-brand"><div>{icons.spark}</div><span>casecraft<small>QA workspace</small></span></div><div className="auth-intro"><span>Loading</span><h1>Opening workspace database</h1><p>Preparing your local Casecraft data.</p></div></section></main>
 
   if (!session) return <AuthScreen mode={authMode} form={authForm} error={authError} onModeChange={mode => { setAuthMode(mode); setAuthError('') }} onUpdate={updateAuth} onSubmit={submitAuth} />
 
