@@ -30,7 +30,7 @@ const example = {
 }
 
 function cleanStep(step) {
-  return step.replace(/^\s*(?:\d+[.)]|[-*•])\s*/, '').trim()
+  return step.replace(/^\s*(?:\d+[.)]|[-*•])\s*/, '').trim() 
 }
 
 function generateCases(data) {
