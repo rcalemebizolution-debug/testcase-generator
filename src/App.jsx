@@ -223,13 +223,13 @@ function formatDate(value) {
   }
 }
 
-function UserCmsPanel({ users, session, onDeleteUser }) {
+function AdminPanel({ users, session, onDeleteUser }) {
   const latestUser = users.slice().sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0]
   const activeUser = users.find(user => user.id === session?.id)
 
-  return <section className="cms-panel user-cms">
+  return <section className="cms-panel admin-panel">
     <div className="cms-hero">
-      <div><span>CMS</span><h2>User registration tracker</h2><p>Track every locally registered account, see who is currently signed in, and monitor registration/login timestamps from one admin-style dashboard.</p></div>
+      <div><span>Admin</span><h2>User management</h2><p>Role-based admin area for tracking registered accounts, current sessions, and user activity. Normal users can only access the test case generator.</p></div>
       <strong>{users.length} registered user{users.length === 1 ? '' : 's'}</strong>
     </div>
     <div className="user-stats">
@@ -238,7 +238,7 @@ function UserCmsPanel({ users, session, onDeleteUser }) {
       <article><span>Newest user</span><strong>{latestUser ? latestUser.name.slice(0, 18) : 'None'}</strong><p>{latestUser ? formatDate(latestUser.createdAt) : 'No registrations yet'}</p></article>
     </div>
     <div className="cms-list users-table-card">
-      <div className="saved-head"><strong>Registered users</strong><span>Local account database</span></div>
+      <div className="saved-head"><strong>Registered users</strong><span>Role-based account database</span></div>
       {users.length === 0 ? <p className="cms-empty">No registered users yet. New accounts appear here after registration.</p> : <div className="users-table">
         <div className="users-row users-head"><span>Name</span><span>Email</span><span>Created</span><span>Last login</span><span>Status</span><span>Action</span></div>
         {users.map(user => <div className="users-row" key={user.id}>
@@ -252,6 +252,14 @@ function UserCmsPanel({ users, session, onDeleteUser }) {
       </div>}
     </div>
   </section>
+}
+
+function isAdminUser(users, session) {
+  if (!session) return false
+  const currentUser = users.find(user => user.id === session.id)
+  if (currentUser?.role === 'admin') return true
+  const oldestUser = users.slice().sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')))[0]
+  return oldestUser?.id === session.id
 }
 
 export default function App() {
@@ -274,6 +282,8 @@ export default function App() {
   const [authError, setAuthError] = useState('')
   const [databaseReady, setDatabaseReady] = useState(false)
   const [activeView, setActiveView] = useState('generator')
+
+  const adminAllowed = isAdminUser(users, session)
 
   useEffect(() => {
     let active = true
@@ -475,7 +485,7 @@ export default function App() {
         <button className={activeView === 'generator' ? 'active' : ''} onClick={() => setActiveView('generator')}><i>{icons.plus}</i><span>New suite</span></button>
         <button onClick={() => { setActiveView('generator'); setTimeout(() => document.querySelector('.saved-suites')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0) }}><i>{icons.file}</i><span>My test cases</span><b>{savedSuites.length}</b></button>
         <button onClick={() => { setActiveView('generator'); setTimeout(() => document.querySelector('.saved-suites')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0) }}><i>{icons.clock}</i><span>Recent</span></button>
-        <button className={activeView === 'cms' ? 'active' : ''} onClick={() => setActiveView('cms')}><i>{icons.settings}</i><span>User CMS</span><b>{users.length}</b></button>
+        {adminAllowed && <button className={activeView === 'admin' ? 'active' : ''} onClick={() => setActiveView('admin')}><i>{icons.settings}</i><span>Admin</span><b>{users.length}</b></button>}
       </nav>
       <div className="sidebar-bottom">
         <div className="tip"><i>{icons.spark}</i><strong>Quick tip</strong><p>Add clear steps for more precise test cases.</p></div>
@@ -486,11 +496,11 @@ export default function App() {
 
     <main>
       <header className="topbar">
-        <div><p>Workspace <span>/</span> {activeView === 'cms' ? 'User registrations' : 'New test suite'}</p><h1>{activeView === 'cms' ? 'User registration CMS' : 'Test case generator'}</h1></div>
+        <div><p>Workspace <span>/</span> {activeView === 'admin' && adminAllowed ? 'Admin / Users' : 'New test suite'}</p><h1>{activeView === 'admin' && adminAllowed ? 'User Management' : 'Test case generator'}</h1></div>
         <div className="status"><span>Signed in as {session.name}</span><button className="logout-top" onClick={logout}>Logout</button><i>{icons.check}</i></div>
       </header>
 
-      {activeView === 'cms' ? <UserCmsPanel users={users} session={session} onDeleteUser={deleteUser} /> : <div className="workspace">
+      {activeView === 'admin' && adminAllowed ? <AdminPanel users={users} session={session} onDeleteUser={deleteUser} /> : <div className="workspace">
         <section className="form-panel">
           <div className="panel-intro"><span>01</span><div><h2>Describe the issue</h2><p>Give us the context. The clearer the details, the sharper the tests.</p></div><b>{completed}/6</b></div>
           <div className="form-grid">

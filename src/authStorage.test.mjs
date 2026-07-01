@@ -16,10 +16,24 @@ test('registerUser creates a local user and trims profile fields', () => {
   assert.equal(result.ok, true)
   assert.equal(result.user.name, 'Isaac Admin')
   assert.equal(result.user.email, 'isaac@example.com')
+  assert.equal(result.user.role, 'admin')
   assert.equal(result.users.length, 1)
   assert.ok(result.user.id)
   assert.ok(result.user.createdAt)
   assert.ok(result.user.lastLoginAt)
+})
+
+test('registerUser makes later users regular users', () => {
+  const admin = createUser({ name: 'Admin', email: 'admin@example.com', password: 'secret123', role: 'admin' })
+  const result = registerUser([admin], {
+    name: 'Member',
+    email: 'member@example.com',
+    password: 'secret123',
+    confirmPassword: 'secret123',
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.user.role, 'user')
 })
 
 test('registerUser rejects duplicate emails', () => {

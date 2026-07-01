@@ -2,12 +2,13 @@ export function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase()
 }
 
-export function createUser({ name, email, password }) {
+export function createUser({ name, email, password, role = 'user' }) {
   const normalizedEmail = normalizeEmail(email)
   return {
     id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     name: String(name || '').trim(),
     email: normalizedEmail,
+    role,
     // Local-only demo auth. Do not use this storage model for production passwords.
     passwordHash: btoa(unescape(encodeURIComponent(String(password || '')))),
     createdAt: new Date().toISOString(),
@@ -47,7 +48,7 @@ export function registerUser(users, details) {
   if (error) return { ok: false, error, users: safeUsers }
 
   const signedInAt = new Date().toISOString()
-  const user = { ...createUser(details), lastLoginAt: signedInAt }
+  const user = { ...createUser({ ...details, role: safeUsers.length === 0 ? 'admin' : 'user' }), lastLoginAt: signedInAt }
   return {
     ok: true,
     user,
