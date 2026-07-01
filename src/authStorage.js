@@ -14,13 +14,17 @@ export function createUser({ name, email, password }) {
   }
 }
 
-export function createSession(user) {
+export function createSession(user, signedInAt = new Date().toISOString()) {
   return {
     id: user.id,
     name: user.name,
     email: user.email,
-    signedInAt: new Date().toISOString(),
+    signedInAt,
   }
+}
+
+export function markUserLogin(users, userId, signedInAt = new Date().toISOString()) {
+  return (Array.isArray(users) ? users : []).map(user => user.id === userId ? { ...user, lastLoginAt: signedInAt } : user)
 }
 
 function validateRegistration(users, details) {
@@ -42,11 +46,12 @@ export function registerUser(users, details) {
   const error = validateRegistration(safeUsers, details)
   if (error) return { ok: false, error, users: safeUsers }
 
-  const user = createUser(details)
+  const signedInAt = new Date().toISOString()
+  const user = { ...createUser(details), lastLoginAt: signedInAt }
   return {
     ok: true,
     user,
-    session: createSession(user),
+    session: createSession(user, signedInAt),
     users: [...safeUsers, user],
   }
 }
@@ -60,5 +65,6 @@ export function loginUser(users, details) {
   const user = (Array.isArray(users) ? users : []).find(item => normalizeEmail(item.email) === email && item.passwordHash === encodedPassword)
   if (!user) return { ok: false, error: 'Email or password is incorrect.' }
 
-  return { ok: true, user, session: createSession(user) }
+  const signedInAt = new Date().toISOString()
+  return { ok: true, user: { ...user, lastLoginAt: signedInAt }, session: createSession(user, signedInAt), users: markUserLogin(users, user.id, signedInAt) }
 }

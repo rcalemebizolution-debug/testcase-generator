@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { createSession, createUser, loginUser, registerUser } from './authStorage.js'
+import { createSession, createUser, loginUser, markUserLogin, registerUser } from './authStorage.js'
 
 const emptyUsers = []
 
@@ -18,6 +18,8 @@ test('registerUser creates a local user and trims profile fields', () => {
   assert.equal(result.user.email, 'isaac@example.com')
   assert.equal(result.users.length, 1)
   assert.ok(result.user.id)
+  assert.ok(result.user.createdAt)
+  assert.ok(result.user.lastLoginAt)
 })
 
 test('registerUser rejects duplicate emails', () => {
@@ -43,6 +45,16 @@ test('loginUser returns a session for valid credentials only', () => {
   assert.equal(good.ok, true)
   assert.equal(good.session.email, 'isaac@example.com')
   assert.equal(good.session.name, 'Isaac')
+  assert.equal(good.users[0].id, user.id)
+  assert.ok(good.users[0].lastLoginAt)
+})
+
+test('markUserLogin updates only the matching user login timestamp', () => {
+  const users = [{ id: 'user-1', name: 'One' }, { id: 'user-2', name: 'Two' }]
+  const updated = markUserLogin(users, 'user-2', '2026-07-01T00:00:00.000Z')
+
+  assert.equal(updated[0].lastLoginAt, undefined)
+  assert.equal(updated[1].lastLoginAt, '2026-07-01T00:00:00.000Z')
 })
 
 test('createSession excludes password from persisted session data', () => {

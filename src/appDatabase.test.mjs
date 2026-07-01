@@ -6,7 +6,7 @@ import { DB_NAME, DB_VERSION, STORE_NAMES, createDraftRecord, createSessionRecor
 test('database schema names the app database and expected stores', () => {
   assert.equal(DB_NAME, 'casecraft-db')
   assert.equal(DB_VERSION, 2)
-  assert.deepEqual(STORE_NAMES, ['users', 'session', 'suites', 'draft', 'cmsTemplates'])
+  assert.deepEqual(STORE_NAMES, ['users', 'session', 'suites', 'draft'])
 })
 
 test('createSessionRecord stores the current session with a stable id', () => {

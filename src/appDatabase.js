@@ -1,12 +1,11 @@
 export const DB_NAME = 'casecraft-db'
 export const DB_VERSION = 2
-export const STORE_NAMES = ['users', 'session', 'suites', 'draft', 'cmsTemplates']
+export const STORE_NAMES = ['users', 'session', 'suites', 'draft']
 export const LOCAL_KEYS = {
   users: 'casecraft-users',
   session: 'casecraft-session',
   suites: 'casecraft-suites',
   draft: 'casecraft-form',
-  cmsTemplates: 'casecraft-cms-templates',
 }
 
 const SINGLETON_ID = 'current'
@@ -97,12 +96,11 @@ export function clearStore(storeName) {
 }
 
 async function loadFromIndexedDb() {
-  const [users, suites, sessionRecord, draftRecord, cmsTemplates] = await Promise.all([
+  const [users, suites, sessionRecord, draftRecord] = await Promise.all([
     getAllRecords('users'),
     getAllRecords('suites'),
     getRecord('session', SINGLETON_ID),
     getRecord('draft', SINGLETON_ID),
-    getAllRecords('cmsTemplates'),
   ])
 
   return {
@@ -110,7 +108,6 @@ async function loadFromIndexedDb() {
     suites,
     session: sessionRecord ? stripRecordId(sessionRecord) : null,
     draft: draftRecord?.form || null,
-    cmsTemplates,
   }
 }
 
@@ -120,7 +117,6 @@ function loadFromLocalStorage() {
     suites: readLocalJson(LOCAL_KEYS.suites, []),
     session: readLocalJson(LOCAL_KEYS.session, null),
     draft: readLocalJson(LOCAL_KEYS.draft, null),
-    cmsTemplates: readLocalJson(LOCAL_KEYS.cmsTemplates, []),
   }
 }
 
@@ -135,9 +131,6 @@ export async function migrateLocalStorageToDatabase() {
   }
   if (!current.suites.length && localData.suites.length) {
     await Promise.all(localData.suites.map(suite => putRecord('suites', suite)))
-  }
-  if (!current.cmsTemplates.length && localData.cmsTemplates.length) {
-    await Promise.all(localData.cmsTemplates.map(template => putRecord('cmsTemplates', template)))
   }
   if (!current.session && localData.session) await putRecord('session', createSessionRecord(localData.session))
   if (!current.draft && localData.draft) await putRecord('draft', createDraftRecord(localData.draft))
@@ -160,12 +153,6 @@ export async function saveSuitesToDatabase(suites) {
   if (!hasIndexedDb()) return writeLocalJson(LOCAL_KEYS.suites, suites)
   await clearStore('suites')
   await Promise.all((suites || []).map(suite => putRecord('suites', suite)))
-}
-
-export async function saveCmsTemplatesToDatabase(templates) {
-  if (!hasIndexedDb()) return writeLocalJson(LOCAL_KEYS.cmsTemplates, templates)
-  await clearStore('cmsTemplates')
-  await Promise.all((templates || []).map(template => putRecord('cmsTemplates', template)))
 }
 
 export async function saveDraftToDatabase(form) {
