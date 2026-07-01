@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createSuiteSnapshot, updateCaseField, updateCaseSteps } from './suiteStorage.js'
 import { loginUser, registerUser } from './authStorage.js'
-import { loadAppData, saveDraftToDatabase, saveSessionToDatabase, saveSuitesToDatabase, saveUsersToDatabase } from './appDatabase.js'
+import { blankCmsTemplate, cmsTemplateToForm, deleteCmsTemplate, upsertCmsTemplate } from './cmsStorage.js'
+import { loadAppData, saveCmsTemplatesToDatabase, saveDraftToDatabase, saveSessionToDatabase, saveSuitesToDatabase, saveUsersToDatabase } from './appDatabase.js'
 
 const icons = {
   spark: <svg viewBox="0 0 24 24"><path d="m12 3 .8 4.2a5 5 0 0 0 4 4l4.2.8-4.2.8a5 5 0 0 0-4 4L12 21l-.8-4.2a5 5 0 0 0-4-4L3 12l4.2-.8a5 5 0 0 0 4-4L12 3Z"/></svg>,
@@ -214,6 +215,43 @@ function AuthScreen({ mode, form, error, onModeChange, onUpdate, onSubmit }) {
   </main>
 }
 
+function CmsPanel({ templates, form, editingId, error, onUpdate, onSubmit, onEdit, onDelete, onUse, onCancel }) {
+  return <section className="cms-panel">
+    <div className="cms-hero">
+      <div><span>CMS</span><h2>Content management</h2><p>Create reusable test-case templates for modules, features, and recurring QA workflows. Published templates can be loaded straight into the generator.</p></div>
+      <strong>{templates.length} template{templates.length === 1 ? '' : 's'}</strong>
+    </div>
+    <div className="cms-layout">
+      <form className="cms-editor" onSubmit={onSubmit}>
+        <div className="saved-head"><strong>{editingId ? 'Edit template' : 'New template'}</strong><span>Stored in this browser</span></div>
+        <div className="form-grid compact">
+          <Field label="Template title" required wide><input value={form.title} onChange={e => onUpdate('title', e.target.value)} placeholder="e.g. Checkout accepts card payment" /></Field>
+          <Field label="Main module" required><input value={form.mainModule} onChange={e => onUpdate('mainModule', e.target.value)} placeholder="e.g. Orders" /></Field>
+          <Field label="Sub module" required><input value={form.subModule} onChange={e => onUpdate('subModule', e.target.value)} placeholder="e.g. Checkout" /></Field>
+          <Field label="Issue details" required wide><textarea rows="4" value={form.issueDetails} onChange={e => onUpdate('issueDetails', e.target.value)} placeholder="Describe the expected behavior, business rules, and constraints..." /></Field>
+          <Field label="Precondition" wide hint="Optional"><textarea rows="2" value={form.precondition} onChange={e => onUpdate('precondition', e.target.value)} placeholder="What must already be true?" /></Field>
+          <Field label="Test steps" required wide><textarea rows="5" value={form.testSteps} onChange={e => onUpdate('testSteps', e.target.value)} placeholder={'Open the page\nPerform the action\nVerify the result'} /></Field>
+          <Field label="Priority"><select value={form.priority} onChange={e => onUpdate('priority', e.target.value)}><option>Low</option><option>Medium</option><option>High</option><option>Critical</option></select></Field>
+          <Field label="Coverage"><select value={form.coverage} onChange={e => onUpdate('coverage', e.target.value)}><option>Focused</option><option>Balanced</option><option>Thorough</option></select></Field>
+          <Field label="Status"><select value={form.status} onChange={e => onUpdate('status', e.target.value)}><option>Draft</option><option>Published</option></select></Field>
+        </div>
+        {error && <p className="cms-error">{error}</p>}
+        <div className="form-actions cms-actions">
+          <button type="button" className="clear" onClick={onCancel}>{icons.trash}<span>{editingId ? 'Cancel edit' : 'Reset'}</span></button>
+          <button type="submit" className="generate"><span>{editingId ? 'Update template' : 'Save template'}</span></button>
+        </div>
+      </form>
+      <div className="cms-list">
+        <div className="saved-head"><strong>Templates</strong><span>Click Use to fill the generator</span></div>
+        {templates.length === 0 ? <p className="cms-empty">No CMS templates yet. Add one to reuse content across test suites.</p> : templates.map(template => <article key={template.id} className="cms-card">
+          <div><span className={`cms-status ${template.status.toLowerCase()}`}>{template.status}</span><h3>{template.title}</h3><p>{template.mainModule} / {template.subModule}</p><small>{template.coverage} coverage · {template.priority} priority</small></div>
+          <footer><button onClick={() => onUse(template)}>Use</button><button onClick={() => onEdit(template)}>Edit</button><button className="danger" onClick={() => onDelete(template.id)}>Delete</button></footer>
+        </article>)}
+      </div>
+    </div>
+  </section>
+}
+
 export default function App() {
   const [form, setForm] = useState(blankForm)
   const [cases, setCases] = useState([])
@@ -233,6 +271,11 @@ export default function App() {
   const [authForm, setAuthForm] = useState(blankAuthForm)
   const [authError, setAuthError] = useState('')
   const [databaseReady, setDatabaseReady] = useState(false)
+  const [activeView, setActiveView] = useState('generator')
+  const [cmsTemplates, setCmsTemplates] = useState([])
+  const [cmsForm, setCmsForm] = useState({ ...blankCmsTemplate })
+  const [cmsEditingId, setCmsEditingId] = useState('')
+  const [cmsError, setCmsError] = useState('')
 
   useEffect(() => {
     let active = true
@@ -243,6 +286,7 @@ export default function App() {
         setSavedSuites(data.suites || [])
         setUsers(data.users || [])
         setSession(data.session || null)
+        setCmsTemplates(data.cmsTemplates || [])
         setAuthMode(data.session || data.users?.length ? 'login' : 'register')
       })
       .catch(() => setNotice('Database unavailable. Using a blank local workspace.'))
@@ -252,6 +296,7 @@ export default function App() {
 
   useEffect(() => { if (databaseReady) saveDraftToDatabase(form) }, [form, databaseReady])
   useEffect(() => { if (databaseReady) saveSuitesToDatabase(savedSuites) }, [savedSuites, databaseReady])
+  useEffect(() => { if (databaseReady) saveCmsTemplatesToDatabase(cmsTemplates) }, [cmsTemplates, databaseReady])
   useEffect(() => { if (databaseReady) saveUsersToDatabase(users) }, [users, databaseReady])
   useEffect(() => { if (databaseReady) saveSessionToDatabase(session) }, [session, databaseReady])
   const completed = useMemo(() => ['mainModule','subModule','issueTitle','issueDetails','precondition','testSteps'].filter(k => form[k].trim()).length, [form])
@@ -380,6 +425,54 @@ export default function App() {
     setCases(list => updateCaseSteps(list, caseId, value))
   }
 
+  const updateCmsForm = (key, value) => {
+    setCmsForm(current => ({ ...current, [key]: value }))
+    setCmsError('')
+  }
+
+  const resetCmsForm = () => {
+    setCmsForm({ ...blankCmsTemplate })
+    setCmsEditingId('')
+    setCmsError('')
+  }
+
+  const saveCmsTemplate = event => {
+    event.preventDefault()
+    const result = upsertCmsTemplate(cmsTemplates, cmsForm, cmsEditingId)
+    if (!result.ok) {
+      setCmsError(result.error)
+      return
+    }
+    setCmsTemplates(result.templates)
+    resetCmsForm()
+    setNotice(cmsEditingId ? 'CMS template updated' : 'CMS template saved')
+    setTimeout(() => setNotice(''), 2200)
+  }
+
+  const editCmsTemplate = template => {
+    setCmsForm({ ...blankCmsTemplate, ...template })
+    setCmsEditingId(template.id)
+    setCmsError('')
+  }
+
+  const removeCmsTemplate = templateId => {
+    setCmsTemplates(list => deleteCmsTemplate(list, templateId))
+    if (cmsEditingId === templateId) resetCmsForm()
+    setNotice('CMS template deleted')
+    setTimeout(() => setNotice(''), 1800)
+  }
+
+  const useCmsTemplate = template => {
+    setForm(cmsTemplateToForm(template))
+    setCases([])
+    setActiveSuiteId('')
+    setEditingCaseId('')
+    setErrors({})
+    setActiveView('generator')
+    setNotice('CMS template loaded into generator')
+    setTimeout(() => setNotice(''), 2200)
+  }
+
   const suiteText = () => cases.map(c => `${c.id}: ${c.title}\nModule: ${c.module}\nSub-Module: ${c.subModule}\nType: ${c.type} | Priority: ${c.priority}\nDescription: ${c.description}\nPrecondition: ${c.precondition}\nSteps:\n${c.steps.map((s,i) => `${i+1}. ${s}`).join('\n')}\nExpected: ${c.expected}`).join('\n\n---\n\n')
   const copy = async () => {
     try {
@@ -420,9 +513,10 @@ export default function App() {
     <aside className="sidebar">
       <div className="brand"><div>{icons.spark}</div><span>casecraft<small>QA workspace</small></span></div>
       <nav>
-        <button className="active"><i>{icons.plus}</i><span>New suite</span></button>
-        <button onClick={() => document.querySelector('.saved-suites')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}><i>{icons.file}</i><span>My test cases</span><b>{savedSuites.length}</b></button>
-        <button onClick={() => document.querySelector('.saved-suites')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}><i>{icons.clock}</i><span>Recent</span></button>
+        <button className={activeView === 'generator' ? 'active' : ''} onClick={() => setActiveView('generator')}><i>{icons.plus}</i><span>New suite</span></button>
+        <button onClick={() => { setActiveView('generator'); setTimeout(() => document.querySelector('.saved-suites')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0) }}><i>{icons.file}</i><span>My test cases</span><b>{savedSuites.length}</b></button>
+        <button onClick={() => { setActiveView('generator'); setTimeout(() => document.querySelector('.saved-suites')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0) }}><i>{icons.clock}</i><span>Recent</span></button>
+        <button className={activeView === 'cms' ? 'active' : ''} onClick={() => setActiveView('cms')}><i>{icons.settings}</i><span>CMS</span><b>{cmsTemplates.length}</b></button>
       </nav>
       <div className="sidebar-bottom">
         <div className="tip"><i>{icons.spark}</i><strong>Quick tip</strong><p>Add clear steps for more precise test cases.</p></div>
@@ -433,11 +527,11 @@ export default function App() {
 
     <main>
       <header className="topbar">
-        <div><p>Workspace <span>/</span> New test suite</p><h1>Test case generator</h1></div>
+        <div><p>Workspace <span>/</span> {activeView === 'cms' ? 'CMS templates' : 'New test suite'}</p><h1>{activeView === 'cms' ? 'CMS template manager' : 'Test case generator'}</h1></div>
         <div className="status"><span>Signed in as {session.name}</span><button className="logout-top" onClick={logout}>Logout</button><i>{icons.check}</i></div>
       </header>
 
-      <div className="workspace">
+      {activeView === 'cms' ? <CmsPanel templates={cmsTemplates} form={cmsForm} editingId={cmsEditingId} error={cmsError} onUpdate={updateCmsForm} onSubmit={saveCmsTemplate} onEdit={editCmsTemplate} onDelete={removeCmsTemplate} onUse={useCmsTemplate} onCancel={resetCmsForm} /> : <div className="workspace">
         <section className="form-panel">
           <div className="panel-intro"><span>01</span><div><h2>Describe the issue</h2><p>Give us the context. The clearer the details, the sharper the tests.</p></div><b>{completed}/6</b></div>
           <div className="form-grid">
@@ -480,7 +574,7 @@ export default function App() {
             {cases.map((item, i) => <TestCase key={item.id} item={item} open={openCases.includes(i)} editing={editingCaseId === item.id} onEditToggle={() => setEditingCaseId(id => id === item.id ? '' : item.id)} onFieldChange={(field, value) => updateCase(item.id, field, value)} onStepsChange={value => updateSteps(item.id, value)} onToggle={() => setOpenCases(o => o.includes(i) ? [] : [i])}/>) }
           </div>}
         </section>
-      </div>
+      </div>}
     </main>
     {notice && <div className="toast"><i>{icons.check}</i>{notice}</div>}
   </div>
