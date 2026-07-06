@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { createSuiteSnapshot, updateCaseField, updateCaseSteps } from './suiteStorage.js'
 import { isEffectiveAdmin, loginUser, registerUser, setUserRole, setUserStatus, updateUserProfile } from './authStorage.js'
 import { loadAppData, saveDraftToDatabase, saveSessionToDatabase, saveSuitesToDatabase, saveUsersToDatabase } from './appDatabase.js'
+import { supabaseEnabled } from './supabaseClient.js'
+import { deleteSupabaseUser, loadSupabaseWorkspace, loginSupabaseUser, logoutSupabaseUser, registerSupabaseUser, setSupabaseUserRole, setSupabaseUserStatus, updateSupabaseProfile } from './supabaseAuth.js'
 
 const icons = {
   spark: <svg viewBox="0 0 24 24"><path d="m12 3 .8 4.2a5 5 0 0 0 4 4l4.2.8-4.2.8a5 5 0 0 0-4 4L12 21l-.8-4.2a5 5 0 0 0-4-4L3 12l4.2-.8a5 5 0 0 0 4-4L12 3Z"/></svg>,
@@ -303,13 +305,20 @@ export default function App() {
   useEffect(() => {
     let active = true
     loadAppData()
-      .then(data => {
+      .then(async data => {
         if (!active) return
         setForm({ ...blankForm, ...(data.draft || {}) })
         setSavedSuites(data.suites || [])
-        setUsers(data.users || [])
-        setSession(data.session || null)
-        setAuthMode(data.session || data.users?.length ? 'login' : 'register')
+        let nextUsers = data.users || []
+        let nextSession = data.session || null
+        if (supabaseEnabled) {
+          const supabaseData = await loadSupabaseWorkspace()
+          nextUsers = supabaseData?.users || []
+          nextSession = supabaseData?.session || null
+        }
+        setUsers(nextUsers)
+        setSession(nextSession)
+        setAuthMode(nextSession || nextUsers?.length ? 'login' : 'register')
       })
       .catch(() => setNotice('Database unavailable. Using a blank local workspace.'))
       .finally(() => { if (active) setDatabaseReady(true) })
@@ -318,8 +327,8 @@ export default function App() {
 
   useEffect(() => { if (databaseReady) saveDraftToDatabase(form) }, [form, databaseReady])
   useEffect(() => { if (databaseReady) saveSuitesToDatabase(savedSuites) }, [savedSuites, databaseReady])
-  useEffect(() => { if (databaseReady) saveUsersToDatabase(users) }, [users, databaseReady])
-  useEffect(() => { if (databaseReady) saveSessionToDatabase(session) }, [session, databaseReady])
+  useEffect(() => { if (databaseReady && !supabaseEnabled) saveUsersToDatabase(users) }, [users, databaseReady])
+  useEffect(() => { if (databaseReady && !supabaseEnabled) saveSessionToDatabase(session) }, [session, databaseReady])
   const completed = useMemo(() => ['mainModule','subModule','issueTitle','issueDetails','precondition','testSteps'].filter(k => form[k].trim()).length, [form])
 
   const updateAuth = (key, value) => {
@@ -343,9 +352,11 @@ export default function App() {
     setProfileError('')
   }
 
-  const submitProfile = event => {
+  const submitProfile = async event => {
     event.preventDefault()
-    const result = updateUserProfile(users, session?.id, profileForm)
+    const result = supabaseEnabled
+      ? await updateSupabaseProfile(session?.id, profileForm)
+      : updateUserProfile(users, session?.id, profileForm)
     if (!result.ok) {
       setProfileError(result.error)
       return
@@ -357,9 +368,11 @@ export default function App() {
     setTimeout(() => setNotice(''), 2200)
   }
 
-  const submitAuth = event => {
+  const submitAuth = async event => {
     event.preventDefault()
-    const result = authMode === 'register' ? registerUser(users, authForm) : loginUser(users, authForm)
+    const result = supabaseEnabled
+      ? (authMode === 'register' ? await registerSupabaseUser(authForm) : await loginSupabaseUser(authForm))
+      : (authMode === 'register' ? registerUser(users, authForm) : loginUser(users, authForm))
     if (!result.ok) {
       setAuthError(result.error)
       return
@@ -368,11 +381,12 @@ export default function App() {
     setSession(result.session)
     setAuthForm(blankAuthForm)
     setAuthError('')
-    setNotice(authMode === 'register' ? 'Account created. Welcome to Casecraft.' : 'Logged in successfully.')
+    setNotice(authMode === 'register' ? (supabaseEnabled ? 'Account created in Supabase. Welcome to Casecraft.' : 'Account created. Welcome to Casecraft.') : 'Logged in successfully.')
     setTimeout(() => setNotice(''), 2200)
   }
 
-  const logout = () => {
+  const logout = async () => {
+    if (supabaseEnabled) await logoutSupabaseUser()
     setSession(null)
     setAccessCode('')
     setAuthMode('login')
@@ -476,19 +490,29 @@ export default function App() {
     setCases(list => updateCaseSteps(list, caseId, value))
   }
 
-  const deleteUser = userId => {
+  const deleteUser = async userId => {
     if (userId === session?.id) {
       setNotice('You cannot delete the currently signed-in user.')
       setTimeout(() => setNotice(''), 2200)
       return
     }
-    setUsers(list => list.filter(user => user.id !== userId))
-    setNotice('User registration deleted')
+    if (supabaseEnabled) {
+      const result = await deleteSupabaseUser(userId)
+      if (!result.ok) {
+        setNotice(result.error)
+        setTimeout(() => setNotice(''), 2400)
+        return
+      }
+      setUsers(result.users)
+    } else {
+      setUsers(list => list.filter(user => user.id !== userId))
+    }
+    setNotice(supabaseEnabled ? 'Supabase profile deleted' : 'User registration deleted')
     setTimeout(() => setNotice(''), 1800)
   }
 
-  const changeUserRole = (userId, role) => {
-    const result = setUserRole(users, session?.id, userId, role)
+  const changeUserRole = async (userId, role) => {
+    const result = supabaseEnabled ? await setSupabaseUserRole(userId, role) : setUserRole(users, session?.id, userId, role)
     if (!result.ok) {
       setNotice(result.error)
       setTimeout(() => setNotice(''), 2400)
@@ -499,8 +523,8 @@ export default function App() {
     setTimeout(() => setNotice(''), 1800)
   }
 
-  const changeUserStatus = (userId, status) => {
-    const result = setUserStatus(users, session?.id, userId, status)
+  const changeUserStatus = async (userId, status) => {
+    const result = supabaseEnabled ? await setSupabaseUserStatus(userId, status) : setUserStatus(users, session?.id, userId, status)
     if (!result.ok) {
       setNotice(result.error)
       setTimeout(() => setNotice(''), 2400)
