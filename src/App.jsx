@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createSuiteSnapshot, updateCaseField, updateCaseSteps } from './suiteStorage.js'
-import { loginUser, registerUser } from './authStorage.js'
+import { loginUser, registerUser, setUserRole, setUserStatus } from './authStorage.js'
 import { loadAppData, saveDraftToDatabase, saveSessionToDatabase, saveSuitesToDatabase, saveUsersToDatabase } from './appDatabase.js'
 
 const icons = {
@@ -223,7 +223,7 @@ function formatDate(value) {
   }
 }
 
-function AdminPanel({ users, session, onDeleteUser }) {
+function AdminPanel({ users, session, onDeleteUser, onRoleChange, onStatusChange }) {
   const latestUser = users.slice().sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0]
   const activeUser = users.find(user => user.id === session?.id)
 
@@ -240,13 +240,13 @@ function AdminPanel({ users, session, onDeleteUser }) {
     <div className="cms-list users-table-card">
       <div className="saved-head"><strong>Registered users</strong><span>Role-based account database</span></div>
       {users.length === 0 ? <p className="cms-empty">No registered users yet. New accounts appear here after registration.</p> : <div className="users-table">
-        <div className="users-row users-head"><span>Name</span><span>Email</span><span>Created</span><span>Last login</span><span>Status</span><span>Action</span></div>
+        <div className="users-row users-head"><span>Name</span><span>Email</span><span>Role</span><span>Last login</span><span>Status</span><span>Action</span></div>
         {users.map(user => <div className="users-row" key={user.id}>
           <span><b className="user-avatar">{user.name?.slice(0, 2).toUpperCase() || 'QA'}</b>{user.name}</span>
           <span>{user.email}</span>
-          <span>{formatDate(user.createdAt)}</span>
+          <span><select value={user.role === 'admin' ? 'admin' : 'user'} disabled={user.id === session?.id} onChange={event => onRoleChange(user.id, event.target.value)}><option value="user">User</option><option value="admin">Admin</option></select></span>
           <span>{formatDate(user.lastLoginAt)}</span>
-          <span><em className={user.id === session?.id ? 'online' : ''}>{user.id === session?.id ? 'Signed in' : 'Registered'}</em></span>
+          <span><select value={user.status === 'disabled' ? 'disabled' : 'active'} disabled={user.id === session?.id} onChange={event => onStatusChange(user.id, event.target.value)}><option value="active">Active</option><option value="disabled">Disabled</option></select></span>
           <span><button className="danger" disabled={user.id === session?.id} onClick={() => onDeleteUser(user.id)}>{user.id === session?.id ? 'Current' : 'Delete'}</button></span>
         </div>)}
       </div>}
@@ -442,6 +442,30 @@ export default function App() {
     setTimeout(() => setNotice(''), 1800)
   }
 
+  const changeUserRole = (userId, role) => {
+    const result = setUserRole(users, session?.id, userId, role)
+    if (!result.ok) {
+      setNotice(result.error)
+      setTimeout(() => setNotice(''), 2400)
+      return
+    }
+    setUsers(result.users)
+    setNotice('User role updated')
+    setTimeout(() => setNotice(''), 1800)
+  }
+
+  const changeUserStatus = (userId, status) => {
+    const result = setUserStatus(users, session?.id, userId, status)
+    if (!result.ok) {
+      setNotice(result.error)
+      setTimeout(() => setNotice(''), 2400)
+      return
+    }
+    setUsers(result.users)
+    setNotice(status === 'disabled' ? 'User disabled' : 'User activated')
+    setTimeout(() => setNotice(''), 1800)
+  }
+
   const suiteText = () => cases.map(c => `${c.id}: ${c.title}\nModule: ${c.module}\nSub-Module: ${c.subModule}\nType: ${c.type} | Priority: ${c.priority}\nDescription: ${c.description}\nPrecondition: ${c.precondition}\nSteps:\n${c.steps.map((s,i) => `${i+1}. ${s}`).join('\n')}\nExpected: ${c.expected}`).join('\n\n---\n\n')
   const copy = async () => {
     try {
@@ -500,7 +524,7 @@ export default function App() {
         <div className="status"><span>Signed in as {session.name}</span><button className="logout-top" onClick={logout}>Logout</button><i>{icons.check}</i></div>
       </header>
 
-      {activeView === 'admin' && adminAllowed ? <AdminPanel users={users} session={session} onDeleteUser={deleteUser} /> : <div className="workspace">
+      {activeView === 'admin' && adminAllowed ? <AdminPanel users={users} session={session} onDeleteUser={deleteUser} onRoleChange={changeUserRole} onStatusChange={changeUserStatus} /> : <div className="workspace">
         <section className="form-panel">
           <div className="panel-intro"><span>01</span><div><h2>Describe the issue</h2><p>Give us the context. The clearer the details, the sharper the tests.</p></div><b>{completed}/6</b></div>
           <div className="form-grid">

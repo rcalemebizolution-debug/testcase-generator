@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { createSession, createUser, loginUser, markUserLogin, registerUser } from './authStorage.js'
+import { createSession, createUser, loginUser, markUserLogin, registerUser, setUserRole, setUserStatus } from './authStorage.js'
 
 const emptyUsers = []
 
@@ -17,6 +17,7 @@ test('registerUser creates a local user and trims profile fields', () => {
   assert.equal(result.user.name, 'Isaac Admin')
   assert.equal(result.user.email, 'isaac@example.com')
   assert.equal(result.user.role, 'admin')
+  assert.equal(result.user.status, 'active')
   assert.equal(result.users.length, 1)
   assert.ok(result.user.id)
   assert.ok(result.user.createdAt)
@@ -69,6 +70,37 @@ test('markUserLogin updates only the matching user login timestamp', () => {
 
   assert.equal(updated[0].lastLoginAt, undefined)
   assert.equal(updated[1].lastLoginAt, '2026-07-01T00:00:00.000Z')
+})
+
+
+
+test('admin can change another user role and status', () => {
+  const users = [
+    { id: 'admin-1', name: 'Admin', role: 'admin', status: 'active' },
+    { id: 'user-1', name: 'Member', role: 'user', status: 'active' },
+  ]
+
+  const promoted = setUserRole(users, 'admin-1', 'user-1', 'admin')
+  assert.equal(promoted.ok, true)
+  assert.equal(promoted.users[1].role, 'admin')
+
+  const disabled = setUserStatus(promoted.users, 'admin-1', 'user-1', 'disabled')
+  assert.equal(disabled.ok, true)
+  assert.equal(disabled.users[1].status, 'disabled')
+})
+
+test('regular users cannot change roles and disabled users cannot log in', () => {
+  const users = [
+    createUser({ name: 'Admin', email: 'admin@example.com', password: 'secret123', role: 'admin' }),
+    { ...createUser({ name: 'Member', email: 'member@example.com', password: 'secret123' }), status: 'disabled' },
+  ]
+
+  const roleChange = setUserRole(users, users[1].id, users[0].id, 'user')
+  assert.equal(roleChange.ok, false)
+
+  const login = loginUser(users, { email: 'member@example.com', password: 'secret123' })
+  assert.equal(login.ok, false)
+  assert.equal(login.error, 'This account is disabled. Contact an admin.')
 })
 
 test('createSession excludes password from persisted session data', () => {

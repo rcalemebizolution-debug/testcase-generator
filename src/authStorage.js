@@ -9,6 +9,7 @@ export function createUser({ name, email, password, role = 'user' }) {
     name: String(name || '').trim(),
     email: normalizedEmail,
     role,
+    status: 'active',
     // Local-only demo auth. Do not use this storage model for production passwords.
     passwordHash: btoa(unescape(encodeURIComponent(String(password || '')))),
     createdAt: new Date().toISOString(),
@@ -26,6 +27,44 @@ export function createSession(user, signedInAt = new Date().toISOString()) {
 
 export function markUserLogin(users, userId, signedInAt = new Date().toISOString()) {
   return (Array.isArray(users) ? users : []).map(user => user.id === userId ? { ...user, lastLoginAt: signedInAt } : user)
+}
+
+export function getUserRole(user) {
+  return user?.role === 'admin' ? 'admin' : 'user'
+}
+
+export function canManageUser(actor, targetUser) {
+  return getUserRole(actor) === 'admin' && actor?.id !== targetUser?.id
+}
+
+export function setUserRole(users, actorId, targetUserId, role) {
+  const safeUsers = Array.isArray(users) ? users : []
+  const actor = safeUsers.find(user => user.id === actorId)
+  const target = safeUsers.find(user => user.id === targetUserId)
+  const nextRole = role === 'admin' ? 'admin' : 'user'
+
+  if (!canManageUser(actor, target)) return { ok: false, error: 'Only an admin can update another user role.', users: safeUsers }
+  if (!target) return { ok: false, error: 'User not found.', users: safeUsers }
+
+  return {
+    ok: true,
+    users: safeUsers.map(user => user.id === targetUserId ? { ...user, role: nextRole } : user),
+  }
+}
+
+export function setUserStatus(users, actorId, targetUserId, status) {
+  const safeUsers = Array.isArray(users) ? users : []
+  const actor = safeUsers.find(user => user.id === actorId)
+  const target = safeUsers.find(user => user.id === targetUserId)
+  const nextStatus = status === 'disabled' ? 'disabled' : 'active'
+
+  if (!canManageUser(actor, target)) return { ok: false, error: 'Only an admin can update another user status.', users: safeUsers }
+  if (!target) return { ok: false, error: 'User not found.', users: safeUsers }
+
+  return {
+    ok: true,
+    users: safeUsers.map(user => user.id === targetUserId ? { ...user, status: nextStatus } : user),
+  }
 }
 
 function validateRegistration(users, details) {
@@ -65,6 +104,7 @@ export function loginUser(users, details) {
   const encodedPassword = btoa(unescape(encodeURIComponent(password)))
   const user = (Array.isArray(users) ? users : []).find(item => normalizeEmail(item.email) === email && item.passwordHash === encodedPassword)
   if (!user) return { ok: false, error: 'Email or password is incorrect.' }
+  if (user.status === 'disabled') return { ok: false, error: 'This account is disabled. Contact an admin.' }
 
   const signedInAt = new Date().toISOString()
   return { ok: true, user: { ...user, lastLoginAt: signedInAt }, session: createSession(user, signedInAt), users: markUserLogin(users, user.id, signedInAt) }
