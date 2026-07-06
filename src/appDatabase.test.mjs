@@ -25,5 +25,6 @@ test('createDraftRecord stores the current form with a stable id', () => {
 
 test('stripRecordId removes database-only id from singleton records', () => {
   assert.deepEqual(stripRecordId({ id: 'current', form: { issueTitle: 'A' } }), { form: { issueTitle: 'A' } })
+  assert.deepEqual(stripRecordId({ id: 'current', userId: 'user-1', name: 'Isaac' }), { id: 'user-1', name: 'Isaac' })
   assert.equal(stripRecordId(null), null)
 })

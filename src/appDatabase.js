@@ -20,7 +20,8 @@ export function createDraftRecord(form) {
 
 export function stripRecordId(record) {
   if (!record) return null
-  const { id, ...rest } = record
+  const { id, userId, ...rest } = record
+  if (userId) return { id: userId, ...rest }
   return rest
 }
 
