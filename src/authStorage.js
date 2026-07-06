@@ -79,6 +79,43 @@ export function setUserStatus(users, actorId, targetUserId, status) {
   }
 }
 
+
+export function updateUserProfile(users, userId, details = {}) {
+  const safeUsers = Array.isArray(users) ? users : []
+  const current = safeUsers.find(user => user.id === userId)
+  if (!current) return { ok: false, error: 'User not found.', users: safeUsers }
+
+  const name = String(details.name ?? current.name ?? '').trim()
+  const email = normalizeEmail(details.email ?? current.email)
+  const password = String(details.password || '')
+  const confirmPassword = String(details.confirmPassword || '')
+
+  if (!name) return { ok: false, error: 'Enter your name.', users: safeUsers }
+  if (!/^\S+@\S+\.\S+$/.test(email)) return { ok: false, error: 'Enter a valid email address.', users: safeUsers }
+  if (safeUsers.some(user => user.id !== userId && normalizeEmail(user.email) === email)) {
+    return { ok: false, error: 'An account with this email already exists.', users: safeUsers }
+  }
+  if (password || confirmPassword) {
+    if (password.length < 6) return { ok: false, error: 'Password must be at least 6 characters.', users: safeUsers }
+    if (password !== confirmPassword) return { ok: false, error: 'Passwords do not match.', users: safeUsers }
+  }
+
+  const updated = {
+    ...current,
+    name,
+    email,
+    ...(password ? { passwordHash: btoa(unescape(encodeURIComponent(password))) } : {}),
+    updatedAt: new Date().toISOString(),
+  }
+
+  return {
+    ok: true,
+    user: updated,
+    session: createSession(updated, new Date().toISOString()),
+    users: safeUsers.map(user => user.id === userId ? updated : user),
+  }
+}
+
 function validateRegistration(users, details) {
   const name = String(details.name || '').trim()
   const email = normalizeEmail(details.email)

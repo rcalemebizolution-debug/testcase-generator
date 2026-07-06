@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { createSession, createUser, isEffectiveAdmin, loginUser, markUserLogin, registerUser, setUserRole, setUserStatus } from './authStorage.js'
+import { createSession, createUser, isEffectiveAdmin, loginUser, markUserLogin, registerUser, setUserRole, setUserStatus, updateUserProfile } from './authStorage.js'
 
 const emptyUsers = []
 
@@ -115,6 +115,38 @@ test('oldest legacy user is treated as effective admin even without an admin rol
   const disabled = setUserStatus(users, 'legacy-admin', 'member-1', 'disabled')
   assert.equal(disabled.ok, true)
   assert.equal(disabled.users[1].status, 'disabled')
+})
+
+
+
+test('updateUserProfile changes current user name, email, and optional password', () => {
+  const user = createUser({ name: 'Old Name', email: 'old@example.com', password: 'secret123', role: 'admin' })
+  const result = updateUserProfile([user], user.id, {
+    name: 'Isaac Rhobert Calem',
+    email: 'isaacrhobertcalem@gmail.com',
+    password: 'Calem4761823',
+    confirmPassword: 'Calem4761823',
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.user.name, 'Isaac Rhobert Calem')
+  assert.equal(result.user.email, 'isaacrhobertcalem@gmail.com')
+  assert.notEqual(result.user.passwordHash, user.passwordHash)
+  assert.equal(result.session.name, 'Isaac Rhobert Calem')
+  assert.equal(result.session.email, 'isaacrhobertcalem@gmail.com')
+})
+
+test('updateUserProfile rejects duplicate email and mismatched password', () => {
+  const first = createUser({ name: 'First', email: 'first@example.com', password: 'secret123' })
+  const second = createUser({ name: 'Second', email: 'second@example.com', password: 'secret123' })
+
+  const duplicate = updateUserProfile([first, second], first.id, { name: 'First', email: 'second@example.com' })
+  assert.equal(duplicate.ok, false)
+  assert.equal(duplicate.error, 'An account with this email already exists.')
+
+  const mismatch = updateUserProfile([first, second], first.id, { name: 'First', email: 'first@example.com', password: 'newpass1', confirmPassword: 'newpass2' })
+  assert.equal(mismatch.ok, false)
+  assert.equal(mismatch.error, 'Passwords do not match.')
 })
 
 test('createSession excludes password from persisted session data', () => {

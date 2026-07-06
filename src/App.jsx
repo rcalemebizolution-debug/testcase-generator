@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createSuiteSnapshot, updateCaseField, updateCaseSteps } from './suiteStorage.js'
-import { isEffectiveAdmin, loginUser, registerUser, setUserRole, setUserStatus } from './authStorage.js'
+import { isEffectiveAdmin, loginUser, registerUser, setUserRole, setUserStatus, updateUserProfile } from './authStorage.js'
 import { loadAppData, saveDraftToDatabase, saveSessionToDatabase, saveSuitesToDatabase, saveUsersToDatabase } from './appDatabase.js'
 
 const icons = {
@@ -186,6 +186,7 @@ function loadSession() {
 }
 
 const blankAuthForm = { name: '', email: '', password: '', confirmPassword: '' }
+const blankProfileForm = { name: '', email: '', password: '', confirmPassword: '' }
 
 function AuthScreen({ mode, form, error, onModeChange, onUpdate, onSubmit }) {
   const isRegister = mode === 'register'
@@ -212,6 +213,26 @@ function AuthScreen({ mode, form, error, onModeChange, onUpdate, onSubmit }) {
       <p className="auth-note">Local demo authentication only. Do not use this as production password storage.</p>
     </section>
   </main>
+}
+
+
+function ProfilePanel({ form, error, onUpdate, onSubmit, onCancel }) {
+  return <section className="profile-panel">
+    <div className="profile-card-large">
+      <div className="saved-head"><strong>Profile settings</strong><span>Update your account details</span></div>
+      <form className="auth-form profile-form" onSubmit={onSubmit}>
+        <Field label="Full name" required><input value={form.name} onChange={e => onUpdate('name', e.target.value)} placeholder="e.g. Isaac Rhobert Calem" autoComplete="name" /></Field>
+        <Field label="Email" required><input type="email" value={form.email} onChange={e => onUpdate('email', e.target.value)} placeholder="you@example.com" autoComplete="email" /></Field>
+        <Field label="New password" hint="Optional"><input type="password" value={form.password} onChange={e => onUpdate('password', e.target.value)} placeholder="Leave blank to keep current password" autoComplete="new-password" /></Field>
+        <Field label="Confirm new password" hint="Optional"><input type="password" value={form.confirmPassword} onChange={e => onUpdate('confirmPassword', e.target.value)} placeholder="Repeat new password" autoComplete="new-password" /></Field>
+        {error && <p className="auth-error">{error}</p>}
+        <div className="profile-actions">
+          <button type="button" className="example" onClick={onCancel}>Cancel</button>
+          <button className="auth-submit" type="submit">Save profile</button>
+        </div>
+      </form>
+    </div>
+  </section>
 }
 
 function formatDate(value) {
@@ -274,6 +295,8 @@ export default function App() {
   const [authError, setAuthError] = useState('')
   const [databaseReady, setDatabaseReady] = useState(false)
   const [activeView, setActiveView] = useState('generator')
+  const [profileForm, setProfileForm] = useState(blankProfileForm)
+  const [profileError, setProfileError] = useState('')
 
   const adminAllowed = isEffectiveAdmin(users, session?.id)
 
@@ -302,6 +325,36 @@ export default function App() {
   const updateAuth = (key, value) => {
     setAuthForm(form => ({ ...form, [key]: value }))
     setAuthError('')
+  }
+
+
+  const openProfile = () => {
+    setProfileForm({
+      ...blankProfileForm,
+      name: session?.name || '',
+      email: session?.email || '',
+    })
+    setProfileError('')
+    setActiveView('profile')
+  }
+
+  const updateProfileField = (key, value) => {
+    setProfileForm(form => ({ ...form, [key]: value }))
+    setProfileError('')
+  }
+
+  const submitProfile = event => {
+    event.preventDefault()
+    const result = updateUserProfile(users, session?.id, profileForm)
+    if (!result.ok) {
+      setProfileError(result.error)
+      return
+    }
+    setUsers(result.users)
+    setSession(result.session)
+    setProfileForm({ ...blankProfileForm, name: result.user.name, email: result.user.email })
+    setNotice('Profile updated')
+    setTimeout(() => setNotice(''), 2200)
   }
 
   const submitAuth = event => {
@@ -505,18 +558,18 @@ export default function App() {
       </nav>
       <div className="sidebar-bottom">
         <div className="tip"><i>{icons.spark}</i><strong>Quick tip</strong><p>Add clear steps for more precise test cases.</p></div>
-        <button className="settings"><i>{icons.settings}</i><span>Settings</span></button>
+        <button className="settings" onClick={openProfile}><i>{icons.settings}</i><span>Profile</span></button>
         <div className="profile"><span>{session.name?.slice(0, 2).toUpperCase() || 'QA'}</span><p><strong>{session.name}</strong><small>{session.email}</small></p><button onClick={logout}>Logout</button></div>
       </div>
     </aside>
 
     <main>
       <header className="topbar">
-        <div><p>Workspace <span>/</span> {activeView === 'admin' && adminAllowed ? 'Admin / Users' : 'New test suite'}</p><h1>{activeView === 'admin' && adminAllowed ? 'User Management' : 'Test case generator'}</h1></div>
+        <div><p>Workspace <span>/</span> {activeView === 'profile' ? 'Profile settings' : activeView === 'admin' && adminAllowed ? 'Admin / Users' : 'New test suite'}</p><h1>{activeView === 'profile' ? 'Profile Settings' : activeView === 'admin' && adminAllowed ? 'User Management' : 'Test case generator'}</h1></div>
         <div className="status"><span>Signed in as {session.name}</span><button className="logout-top" onClick={logout}>Logout</button><i>{icons.check}</i></div>
       </header>
 
-      {activeView === 'admin' && adminAllowed ? <AdminPanel users={users} session={session} onDeleteUser={deleteUser} onRoleChange={changeUserRole} onStatusChange={changeUserStatus} /> : <div className="workspace">
+      {activeView === 'profile' ? <ProfilePanel form={profileForm} error={profileError} onUpdate={updateProfileField} onSubmit={submitProfile} onCancel={() => setActiveView('generator')} /> : activeView === 'admin' && adminAllowed ? <AdminPanel users={users} session={session} onDeleteUser={deleteUser} onRoleChange={changeUserRole} onStatusChange={changeUserStatus} /> : <div className="workspace">
         <section className="form-panel">
           <div className="panel-intro"><span>01</span><div><h2>Describe the issue</h2><p>Give us the context. The clearer the details, the sharper the tests.</p></div><b>{completed}/6</b></div>
           <div className="form-grid">
