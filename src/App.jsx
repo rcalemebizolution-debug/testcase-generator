@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createSuiteSnapshot, updateCaseField, updateCaseSteps } from './suiteStorage.js'
-import { loginUser, registerUser, setUserRole, setUserStatus } from './authStorage.js'
+import { isEffectiveAdmin, loginUser, registerUser, setUserRole, setUserStatus } from './authStorage.js'
 import { loadAppData, saveDraftToDatabase, saveSessionToDatabase, saveSuitesToDatabase, saveUsersToDatabase } from './appDatabase.js'
 
 const icons = {
@@ -254,14 +254,6 @@ function AdminPanel({ users, session, onDeleteUser, onRoleChange, onStatusChange
   </section>
 }
 
-function isAdminUser(users, session) {
-  if (!session) return false
-  const currentUser = users.find(user => user.id === session.id)
-  if (currentUser?.role === 'admin') return true
-  const oldestUser = users.slice().sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')))[0]
-  return oldestUser?.id === session.id
-}
-
 export default function App() {
   const [form, setForm] = useState(blankForm)
   const [cases, setCases] = useState([])
@@ -283,7 +275,7 @@ export default function App() {
   const [databaseReady, setDatabaseReady] = useState(false)
   const [activeView, setActiveView] = useState('generator')
 
-  const adminAllowed = isAdminUser(users, session)
+  const adminAllowed = isEffectiveAdmin(users, session?.id)
 
   useEffect(() => {
     let active = true

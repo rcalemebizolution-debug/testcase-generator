@@ -33,18 +33,31 @@ export function getUserRole(user) {
   return user?.role === 'admin' ? 'admin' : 'user'
 }
 
-export function canManageUser(actor, targetUser) {
-  return getUserRole(actor) === 'admin' && actor?.id !== targetUser?.id
+export function getOldestUser(users) {
+  return (Array.isArray(users) ? users : [])
+    .filter(Boolean)
+    .slice()
+    .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')))[0] || null
+}
+
+export function isEffectiveAdmin(users, actorId) {
+  const safeUsers = Array.isArray(users) ? users : []
+  const actor = safeUsers.find(user => user.id === actorId)
+  if (getUserRole(actor) === 'admin') return true
+  return getOldestUser(safeUsers)?.id === actorId
+}
+
+export function canManageUser(users, actorId, targetUserId) {
+  return isEffectiveAdmin(users, actorId) && actorId !== targetUserId
 }
 
 export function setUserRole(users, actorId, targetUserId, role) {
   const safeUsers = Array.isArray(users) ? users : []
-  const actor = safeUsers.find(user => user.id === actorId)
   const target = safeUsers.find(user => user.id === targetUserId)
   const nextRole = role === 'admin' ? 'admin' : 'user'
 
-  if (!canManageUser(actor, target)) return { ok: false, error: 'Only an admin can update another user role.', users: safeUsers }
   if (!target) return { ok: false, error: 'User not found.', users: safeUsers }
+  if (!canManageUser(safeUsers, actorId, targetUserId)) return { ok: false, error: 'Only an admin can update another user role.', users: safeUsers }
 
   return {
     ok: true,
@@ -54,12 +67,11 @@ export function setUserRole(users, actorId, targetUserId, role) {
 
 export function setUserStatus(users, actorId, targetUserId, status) {
   const safeUsers = Array.isArray(users) ? users : []
-  const actor = safeUsers.find(user => user.id === actorId)
   const target = safeUsers.find(user => user.id === targetUserId)
   const nextStatus = status === 'disabled' ? 'disabled' : 'active'
 
-  if (!canManageUser(actor, target)) return { ok: false, error: 'Only an admin can update another user status.', users: safeUsers }
   if (!target) return { ok: false, error: 'User not found.', users: safeUsers }
+  if (!canManageUser(safeUsers, actorId, targetUserId)) return { ok: false, error: 'Only an admin can update another user status.', users: safeUsers }
 
   return {
     ok: true,

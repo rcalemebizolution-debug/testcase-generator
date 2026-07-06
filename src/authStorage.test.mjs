@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { createSession, createUser, loginUser, markUserLogin, registerUser, setUserRole, setUserStatus } from './authStorage.js'
+import { createSession, createUser, isEffectiveAdmin, loginUser, markUserLogin, registerUser, setUserRole, setUserStatus } from './authStorage.js'
 
 const emptyUsers = []
 
@@ -101,6 +101,20 @@ test('regular users cannot change roles and disabled users cannot log in', () =>
   const login = loginUser(users, { email: 'member@example.com', password: 'secret123' })
   assert.equal(login.ok, false)
   assert.equal(login.error, 'This account is disabled. Contact an admin.')
+})
+
+
+
+test('oldest legacy user is treated as effective admin even without an admin role', () => {
+  const users = [
+    { id: 'legacy-admin', name: 'Legacy', email: 'legacy@example.com', role: 'user', status: 'active', createdAt: '2026-07-01T00:00:00.000Z' },
+    { id: 'member-1', name: 'Member', email: 'member@example.com', role: 'user', status: 'active', createdAt: '2026-07-02T00:00:00.000Z' },
+  ]
+
+  assert.equal(isEffectiveAdmin(users, 'legacy-admin'), true)
+  const disabled = setUserStatus(users, 'legacy-admin', 'member-1', 'disabled')
+  assert.equal(disabled.ok, true)
+  assert.equal(disabled.users[1].status, 'disabled')
 })
 
 test('createSession excludes password from persisted session data', () => {
