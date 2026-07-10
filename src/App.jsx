@@ -240,6 +240,24 @@ function ProfilePanel({ form, error, onUpdate, onSubmit, onCancel }) {
   </section>
 }
 
+function SavedSuitesPanel({ suites, activeSuiteId, onLoad, onDelete }) {
+  return <section className="cms-panel suites-panel">
+    <div className="cms-hero">
+      <div><span>Private</span><h2>My test cases</h2><p>Your saved test suites are collected here and are visible only to your account.</p></div>
+      <strong>{suites.length} saved suite{suites.length === 1 ? '' : 's'}</strong>
+    </div>
+    <div className="cms-list suite-library">
+      <div className="saved-head"><strong>Saved suites</strong><span>Select a suite to open it in the generator</span></div>
+      <div className="saved-suites">
+        {suites.length === 0 ? <p>No saved suites yet. Generate test cases, then select Save suite.</p> : suites.map(suite => <article key={suite.id} className={suite.id === activeSuiteId ? 'active' : ''}>
+          <button onClick={() => onLoad(suite)}><strong>{suite.title}</strong><span>{suite.caseCount} cases · {suite.module || 'No module'}</span></button>
+          <button className="delete-suite" onClick={() => onDelete(suite.id)} title="Delete saved suite">{icons.trash}</button>
+        </article>)}
+      </div>
+    </div>
+  </section>
+}
+
 function formatDate(value) {
   if (!value) return 'Not recorded'
   try {
@@ -467,7 +485,8 @@ export default function App() {
       const nextSuites = await persistSavedSuite({ savedSuites, snapshot, save: saveSuitesToDatabase })
       setSavedSuites(nextSuites)
       setActiveSuiteId(snapshot.id)
-      setNotice(activeSuiteId ? 'Saved suite updated' : 'Suite saved in this browser')
+      setActiveView('suites')
+      setNotice(activeSuiteId ? 'Saved suite updated' : 'Suite saved in My test cases')
     } catch {
       setNotice('Suite could not be saved. Check browser storage permissions and try again.')
     }
@@ -586,8 +605,8 @@ export default function App() {
       <div className="brand"><div>{icons.spark}</div><span>casecraft<small>QA workspace</small></span></div>
       <nav>
         <button className={activeView === 'generator' ? 'active' : ''} onClick={() => setActiveView('generator')}><i>{icons.plus}</i><span>New suite</span></button>
-        <button onClick={() => { setActiveView('generator'); setTimeout(() => document.querySelector('.saved-suites')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0) }}><i>{icons.file}</i><span>My test cases</span><b>{mySuites.length}</b></button>
-        <button onClick={() => { setActiveView('generator'); setTimeout(() => document.querySelector('.saved-suites')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0) }}><i>{icons.clock}</i><span>Recent</span></button>
+        <button className={activeView === 'suites' ? 'active' : ''} onClick={() => setActiveView('suites')}><i>{icons.file}</i><span>My test cases</span><b>{mySuites.length}</b></button>
+        <button onClick={() => setActiveView('suites')}><i>{icons.clock}</i><span>Recent</span></button>
         {adminAllowed && <button className={activeView === 'admin' ? 'active' : ''} onClick={() => setActiveView('admin')}><i>{icons.settings}</i><span>Admin</span><b>{users.length}</b></button>}
       </nav>
       <div className="sidebar-bottom">
@@ -599,11 +618,11 @@ export default function App() {
 
     <main>
       <header className="topbar">
-        <div><p>Workspace <span>/</span> {activeView === 'profile' ? 'Profile settings' : activeView === 'admin' && adminAllowed ? 'Admin / Users' : 'New test suite'}</p><h1>{activeView === 'profile' ? 'Profile Settings' : activeView === 'admin' && adminAllowed ? 'User Management' : 'Test case generator'}</h1></div>
+        <div><p>Workspace <span>/</span> {activeView === 'profile' ? 'Profile settings' : activeView === 'suites' ? 'My test cases' : activeView === 'admin' && adminAllowed ? 'Admin / Users' : 'New test suite'}</p><h1>{activeView === 'profile' ? 'Profile Settings' : activeView === 'suites' ? 'My Test Cases' : activeView === 'admin' && adminAllowed ? 'User Management' : 'Test case generator'}</h1></div>
         <div className="status"><span>Signed in as {session.name}</span><button className="logout-top" onClick={logout}>Logout</button><i>{icons.check}</i></div>
       </header>
 
-      {activeView === 'profile' ? <ProfilePanel form={profileForm} error={profileError} onUpdate={updateProfileField} onSubmit={submitProfile} onCancel={() => setActiveView('generator')} /> : activeView === 'admin' && adminAllowed ? <AdminPanel users={users} session={session} onDeleteUser={deleteUser} onRoleChange={changeUserRole} onStatusChange={changeUserStatus} /> : <div className="workspace">
+      {activeView === 'profile' ? <ProfilePanel form={profileForm} error={profileError} onUpdate={updateProfileField} onSubmit={submitProfile} onCancel={() => setActiveView('generator')} /> : activeView === 'suites' ? <SavedSuitesPanel suites={mySuites} activeSuiteId={activeSuiteId} onLoad={suite => { loadSuite(suite); setActiveView('generator') }} onDelete={deleteSuite} /> : activeView === 'admin' && adminAllowed ? <AdminPanel users={users} session={session} onDeleteUser={deleteUser} onRoleChange={changeUserRole} onStatusChange={changeUserStatus} /> : <div className="workspace">
         <section className="form-panel">
           <div className="panel-intro"><span>01</span><div><h2>Describe the issue</h2><p>Give us the context. The clearer the details, the sharper the tests.</p></div><b>{completed}/6</b></div>
           <div className="form-grid">
@@ -627,13 +646,6 @@ export default function App() {
             <button className="example" onClick={() => { setForm(example); setErrors({}) }}>Use example</button>
             {cases.length > 0 && <button className="save-suite" onClick={saveSuite}>{icons.file}<span>{activeSuiteId ? 'Update saved suite' : 'Save suite'}</span></button>}
             <button className="generate" onClick={generate} disabled={generating}>{generating ? <span className="spinner"/> : icons.wand}<span>{generating ? 'Analyzing real-world scenarios…' : aiEnabled ? 'Generate with AI' : 'Generate test cases'}</span></button>
-          </div>
-          <div className="saved-suites">
-            <div className="saved-head"><strong>My private suites</strong><span>{mySuites.length} suite{mySuites.length === 1 ? '' : 's'}</span></div>
-            {mySuites.length === 0 ? <p>No saved suites yet. Generate test cases, then select Save suite.</p> : mySuites.map(suite => <article key={suite.id} className={suite.id === activeSuiteId ? 'active' : ''}>
-              <button onClick={() => loadSuite(suite)}><strong>{suite.title}</strong><span>{suite.caseCount} cases · {suite.module || 'No module'}</span></button>
-              <button className="delete-suite" onClick={() => deleteSuite(suite.id)} title="Delete saved suite">{icons.trash}</button>
-            </article>)}
           </div>
         </section>
 
