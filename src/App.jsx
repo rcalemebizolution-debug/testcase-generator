@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { createSuiteSnapshot, updateCaseField, updateCaseSteps } from './suiteStorage.js'
+import { createSuiteSnapshot, persistSavedSuite, updateCaseField, updateCaseSteps } from './suiteStorage.js'
 import { isEffectiveAdmin, loginUser, registerUser, setUserRole, setUserStatus, updateUserProfile } from './authStorage.js'
 import { loadAppData, saveDraftToDatabase, saveSessionToDatabase, saveSuitesToDatabase, saveUsersToDatabase } from './appDatabase.js'
 import { supabaseEnabled } from './supabaseClient.js'
@@ -454,16 +454,21 @@ export default function App() {
     }
   }
 
-  const saveSuite = () => {
+  const saveSuite = async () => {
     if (!cases.length) {
       setNotice('Generate cases before saving a suite.')
       setTimeout(() => setNotice(''), 2200)
       return
     }
     const snapshot = createSuiteSnapshot({ form, cases, source: caseSource, existingId: activeSuiteId })
-    setSavedSuites(list => [snapshot, ...list.filter(item => item.id !== snapshot.id)].slice(0, 12))
-    setActiveSuiteId(snapshot.id)
-    setNotice(activeSuiteId ? 'Saved suite updated' : 'Suite saved locally')
+    try {
+      const nextSuites = await persistSavedSuite({ savedSuites, snapshot, save: saveSuitesToDatabase })
+      setSavedSuites(nextSuites)
+      setActiveSuiteId(snapshot.id)
+      setNotice(activeSuiteId ? 'Saved suite updated' : 'Suite saved in this browser')
+    } catch {
+      setNotice('Suite could not be saved. Check browser storage permissions and try again.')
+    }
     setTimeout(() => setNotice(''), 2200)
   }
 

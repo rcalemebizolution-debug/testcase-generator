@@ -26,6 +26,12 @@ export function createSuiteSnapshot({ form, cases, source = 'standard', existing
   }
 }
 
+export async function persistSavedSuite({ savedSuites = [], snapshot, save, limit = 12 } = {}) {
+  const nextSuites = [snapshot, ...savedSuites.filter(item => item.id !== snapshot.id)].slice(0, limit)
+  await save(nextSuites)
+  return nextSuites
+}
+
 export function updateCaseField(cases, caseId, field, value) {
   return cases.map(item => item.id === caseId ? { ...item, [field]: value } : item)
 }

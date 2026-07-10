@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { createSuiteSnapshot, updateCaseField, updateCaseSteps } from './suiteStorage.js'
+import { createSuiteSnapshot, persistSavedSuite, updateCaseField, updateCaseSteps } from './suiteStorage.js'
 
 const baseForm = {
   mainModule: 'Authentication',
@@ -36,6 +36,22 @@ test('createSuiteSnapshot stores editable cases with metadata', () => {
   assert.equal(saved.caseCount, 1)
   assert.deepEqual(saved.cases, baseCases)
   assert.ok(saved.updatedAt)
+})
+
+test('persistSavedSuite writes the updated collection before reporting success', async () => {
+  const existing = createSuiteSnapshot({ form: baseForm, cases: baseCases, existingId: 'suite-old' })
+  const replacement = createSuiteSnapshot({ form: { ...baseForm, issueTitle: 'Updated suite' }, cases: baseCases, existingId: 'suite-new' })
+  let persisted = null
+
+  const result = await persistSavedSuite({
+    savedSuites: [existing],
+    snapshot: replacement,
+    save: async suites => { persisted = suites },
+  })
+
+  assert.deepEqual(result, persisted)
+  assert.equal(result[0].id, 'suite-new')
+  assert.equal(result[1].id, 'suite-old')
 })
 
 test('updateCaseField edits one case without mutating the original list', () => {
