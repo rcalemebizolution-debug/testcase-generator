@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { createSuiteSnapshot, persistSavedSuite, updateCaseField, updateCaseSteps } from './suiteStorage.js'
+import { assignUnownedSuites, createSuiteSnapshot, getSuitesForUser, persistSavedSuite, updateCaseField, updateCaseSteps } from './suiteStorage.js'
 import { isEffectiveAdmin, loginUser, registerUser, setUserRole, setUserStatus, updateUserProfile } from './authStorage.js'
 import { loadAppData, saveDraftToDatabase, saveSessionToDatabase, saveSuitesToDatabase, saveUsersToDatabase } from './appDatabase.js'
 import { supabaseEnabled } from './supabaseClient.js'
@@ -311,7 +311,6 @@ export default function App() {
       .then(async data => {
         if (!active) return
         setForm({ ...blankForm, ...(data.draft || {}) })
-        setSavedSuites(data.suites || [])
         let nextUsers = data.users || []
         let nextSession = data.session || null
         if (supabaseEnabled) {
@@ -319,6 +318,7 @@ export default function App() {
           nextUsers = supabaseData?.users || []
           nextSession = supabaseData?.session || null
         }
+        setSavedSuites(assignUnownedSuites(data.suites || [], nextSession?.id))
         setUsers(nextUsers)
         setSession(nextSession)
         setAuthMode(nextSession || nextUsers?.length ? 'login' : 'register')
@@ -333,6 +333,7 @@ export default function App() {
   useEffect(() => { if (databaseReady && !supabaseEnabled) saveUsersToDatabase(users) }, [users, databaseReady])
   useEffect(() => { if (databaseReady && !supabaseEnabled) saveSessionToDatabase(session) }, [session, databaseReady])
   const completed = useMemo(() => ['mainModule','subModule','issueTitle','issueDetails','precondition','testSteps'].filter(k => form[k].trim()).length, [form])
+  const mySuites = useMemo(() => getSuitesForUser(savedSuites, session?.id), [savedSuites, session?.id])
 
   const updateAuth = (key, value) => {
     setAuthForm(form => ({ ...form, [key]: value }))
@@ -382,6 +383,7 @@ export default function App() {
     }
     if (result.users) setUsers(result.users)
     setSession(result.session)
+    setSavedSuites(list => assignUnownedSuites(list, result.session?.id))
     setAuthForm(blankAuthForm)
     setAuthError('')
     setNotice(authMode === 'register' ? (supabaseEnabled ? 'Account created in Supabase. Welcome to Casecraft.' : 'Account created. Welcome to Casecraft.') : 'Logged in successfully.')
@@ -460,7 +462,7 @@ export default function App() {
       setTimeout(() => setNotice(''), 2200)
       return
     }
-    const snapshot = createSuiteSnapshot({ form, cases, source: caseSource, existingId: activeSuiteId })
+    const snapshot = createSuiteSnapshot({ form, cases, source: caseSource, existingId: activeSuiteId, ownerId: session.id })
     try {
       const nextSuites = await persistSavedSuite({ savedSuites, snapshot, save: saveSuitesToDatabase })
       setSavedSuites(nextSuites)
@@ -584,7 +586,7 @@ export default function App() {
       <div className="brand"><div>{icons.spark}</div><span>casecraft<small>QA workspace</small></span></div>
       <nav>
         <button className={activeView === 'generator' ? 'active' : ''} onClick={() => setActiveView('generator')}><i>{icons.plus}</i><span>New suite</span></button>
-        <button onClick={() => { setActiveView('generator'); setTimeout(() => document.querySelector('.saved-suites')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0) }}><i>{icons.file}</i><span>My test cases</span><b>{savedSuites.length}</b></button>
+        <button onClick={() => { setActiveView('generator'); setTimeout(() => document.querySelector('.saved-suites')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0) }}><i>{icons.file}</i><span>My test cases</span><b>{mySuites.length}</b></button>
         <button onClick={() => { setActiveView('generator'); setTimeout(() => document.querySelector('.saved-suites')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0) }}><i>{icons.clock}</i><span>Recent</span></button>
         {adminAllowed && <button className={activeView === 'admin' ? 'active' : ''} onClick={() => setActiveView('admin')}><i>{icons.settings}</i><span>Admin</span><b>{users.length}</b></button>}
       </nav>
@@ -627,8 +629,8 @@ export default function App() {
             <button className="generate" onClick={generate} disabled={generating}>{generating ? <span className="spinner"/> : icons.wand}<span>{generating ? 'Analyzing real-world scenarios…' : aiEnabled ? 'Generate with AI' : 'Generate test cases'}</span></button>
           </div>
           <div className="saved-suites">
-            <div className="saved-head"><strong>Saved locally</strong><span>{savedSuites.length} suite{savedSuites.length === 1 ? '' : 's'}</span></div>
-            {savedSuites.length === 0 ? <p>No saved suites yet. Generate test cases, then select Save suite.</p> : savedSuites.map(suite => <article key={suite.id} className={suite.id === activeSuiteId ? 'active' : ''}>
+            <div className="saved-head"><strong>My private suites</strong><span>{mySuites.length} suite{mySuites.length === 1 ? '' : 's'}</span></div>
+            {mySuites.length === 0 ? <p>No saved suites yet. Generate test cases, then select Save suite.</p> : mySuites.map(suite => <article key={suite.id} className={suite.id === activeSuiteId ? 'active' : ''}>
               <button onClick={() => loadSuite(suite)}><strong>{suite.title}</strong><span>{suite.caseCount} cases · {suite.module || 'No module'}</span></button>
               <button className="delete-suite" onClick={() => deleteSuite(suite.id)} title="Delete saved suite">{icons.trash}</button>
             </article>)}
