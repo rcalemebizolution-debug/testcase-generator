@@ -198,7 +198,10 @@ function AuthScreen({ mode, form, error, onModeChange, onUpdate, onSubmit }) {
       <div className="auth-intro">
         <span>{isRegister ? 'Create account' : 'Welcome back'}</span>
         <h1>{isRegister ? 'Register your QA workspace' : 'Log in to Casecraft'}</h1>
-        <p>{isRegister ? 'Create a local account to access the generator and keep saved suites on this browser.' : 'Use your local account to continue managing saved test suites.'}</p>
+        <p>{isRegister
+          ? (supabaseEnabled ? 'Create a secure Supabase account to access the generator.' : 'Create a local account to access the generator and keep saved suites on this browser.')
+          : (supabaseEnabled ? 'Use your Supabase account to continue managing saved test suites.' : 'Use your local account to continue managing saved test suites.')}
+        </p>
       </div>
       <form className="auth-form" onSubmit={onSubmit}>
         {isRegister && <Field label="Full name" required><input value={form.name} onChange={e => onUpdate('name', e.target.value)} placeholder="e.g. Isaac Admin" autoComplete="name" /></Field>}

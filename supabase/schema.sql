@@ -59,6 +59,32 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
+-- RLS controls which rows users may update, while this trigger prevents a
+-- regular user from elevating their own role or changing account status.
+create or replace function public.protect_profile_admin_fields()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if (
+    old.role is distinct from new.role
+    or old.status is distinct from new.status
+  )
+  and auth.uid() is not null
+  and not public.is_admin(auth.uid()) then
+    raise exception 'Only an active admin can change profile role or status.';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists protect_profile_admin_fields on public.profiles;
+create trigger protect_profile_admin_fields
+  before update on public.profiles
+  for each row execute function public.protect_profile_admin_fields();
+
 create policy "Users can read own profile"
   on public.profiles for select
   using (auth.uid() = id);
