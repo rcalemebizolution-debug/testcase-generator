@@ -240,8 +240,9 @@ function ProfilePanel({ form, error, onUpdate, onSubmit, onCancel }) {
   </section>
 }
 
-function SavedSuitesPanel({ suites, activeSuiteId, onLoad, onDelete }) {
+function SavedSuitesPanel({ suites, activeSuiteId, onLoad, onDelete, onBack }) {
   return <section className="cms-panel suites-panel">
+    <div className="suite-toolbar"><button className="example" onClick={onBack}>Back</button></div>
     <div className="cms-hero">
       <div><span>Private</span><h2>My test cases</h2><p>Your saved test suites are collected here and are visible only to your account.</p></div>
       <strong>{suites.length} saved suite{suites.length === 1 ? '' : 's'}</strong>
@@ -313,7 +314,7 @@ export default function App() {
   const [editingCaseId, setEditingCaseId] = useState('')
   const [users, setUsers] = useState([])
   const [session, setSession] = useState(null)
-  const [authMode, setAuthMode] = useState('register')
+  const [authMode, setAuthMode] = useState('login')
   const [authForm, setAuthForm] = useState(blankAuthForm)
   const [authError, setAuthError] = useState('')
   const [databaseReady, setDatabaseReady] = useState(false)
@@ -339,7 +340,7 @@ export default function App() {
         setSavedSuites(assignUnownedSuites(data.suites || [], nextSession?.id))
         setUsers(nextUsers)
         setSession(nextSession)
-        setAuthMode(nextSession || nextUsers?.length ? 'login' : 'register')
+        setAuthMode('login')
       })
       .catch(() => setNotice('Database unavailable. Using a blank local workspace.'))
       .finally(() => { if (active) setDatabaseReady(true) })
@@ -622,7 +623,7 @@ export default function App() {
         <div className="status"><span>Signed in as {session.name}</span><button className="logout-top" onClick={logout}>Logout</button><i>{icons.check}</i></div>
       </header>
 
-      {activeView === 'profile' ? <ProfilePanel form={profileForm} error={profileError} onUpdate={updateProfileField} onSubmit={submitProfile} onCancel={() => setActiveView('generator')} /> : activeView === 'suites' ? <SavedSuitesPanel suites={mySuites} activeSuiteId={activeSuiteId} onLoad={suite => { loadSuite(suite); setActiveView('generator') }} onDelete={deleteSuite} /> : activeView === 'admin' && adminAllowed ? <AdminPanel users={users} session={session} onDeleteUser={deleteUser} onRoleChange={changeUserRole} onStatusChange={changeUserStatus} /> : <div className="workspace">
+      {activeView === 'profile' ? <ProfilePanel form={profileForm} error={profileError} onUpdate={updateProfileField} onSubmit={submitProfile} onCancel={() => setActiveView('generator')} /> : activeView === 'suites' ? <SavedSuitesPanel suites={mySuites} activeSuiteId={activeSuiteId} onLoad={suite => { loadSuite(suite); setActiveView('generator') }} onDelete={deleteSuite} onBack={() => setActiveView('generator')} /> : activeView === 'admin' && adminAllowed ? <AdminPanel users={users} session={session} onDeleteUser={deleteUser} onRoleChange={changeUserRole} onStatusChange={changeUserStatus} /> : <div className="workspace">
         <section className="form-panel">
           <div className="panel-intro"><span>01</span><div><h2>Describe the issue</h2><p>Give us the context. The clearer the details, the sharper the tests.</p></div><b>{completed}/6</b></div>
           <div className="form-grid">

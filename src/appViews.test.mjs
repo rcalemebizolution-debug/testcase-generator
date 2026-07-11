@@ -14,3 +14,14 @@ test('saving a suite opens the My test cases view', () => {
   const saveSuiteBody = source.slice(source.indexOf('const saveSuite'), source.indexOf('const loadSuite'))
   assert.match(saveSuiteBody, /setActiveView\('suites'\)/)
 })
+
+test('My test cases has a Back button to the generator', () => {
+  const panelBody = source.slice(source.indexOf('function SavedSuitesPanel'), source.indexOf('function formatDate'))
+  assert.match(panelBody, />Back</)
+  assert.match(panelBody, /onClick=\{onBack\}/)
+})
+
+test('the unauthenticated landing page defaults to login', () => {
+  assert.match(source, /useState\('login'\)/)
+  assert.doesNotMatch(source, /nextSession \|\| nextUsers\?\.length \? 'login' : 'register'/)
+})
