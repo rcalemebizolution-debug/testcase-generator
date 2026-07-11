@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { downloadTestCaseCsv } from './testCaseCsv.js'
-import { buildRequirementCoverage, createRequirementDocument, loadRequirementDocuments, readRequirementFile, saveRequirementDocuments } from './requirementDocuments.js'
+import { applyRequirementDocumentDefaults, buildRequirementCoverage, createRequirementDocument, loadRequirementDocuments, readRequirementFile, saveRequirementDocuments } from './requirementDocuments.js'
 import { developmentBlankForm, developmentExample, createDevelopmentAiPayload, createDevelopmentCases } from './developmentTestDesign.js'
 import { assignUnownedSuites, createSuiteSnapshot, getSuitesForUser, getSuitesForWorkspace, persistSavedSuite, updateCaseField, updateCaseSteps } from './suiteStorage.js'
 import { isEffectiveAdmin, loginUser, registerUser, setUserRole, setUserStatus, updateUserProfile } from './authStorage.js'
@@ -281,6 +281,11 @@ function DevelopmentWorkspace({ user, onSwitch, onLogout, suites, savedSuites, o
   const approvedRequirements = activeRequirementDocument?.requirements.filter(requirement => requirement.approved) || []
   const requirementCoverage = useMemo(() => buildRequirementCoverage(requirementDocuments.flatMap(document => document.requirements.filter(requirement => requirement.approved)), suites), [requirementDocuments, suites])
 
+  useEffect(() => {
+    if (!activeRequirementDocument || approvedRequirements.length === 0) return
+    setForm(current => applyRequirementDocumentDefaults(current, activeRequirementDocument))
+  }, [activeRequirementDocument, approvedRequirements.length])
+
   const update = (key, value) => {
     setForm(current => ({ ...current, [key]: value }))
     setErrors(current => ({ ...current, [key]: false }))
@@ -418,6 +423,7 @@ function DevelopmentWorkspace({ user, onSwitch, onLogout, suites, savedSuites, o
             {!activeRequirementDocument ? <p className="requirement-picker-empty">Upload and approve requirements from the Requirements page, or continue without a document.</p> : approvedRequirements.length === 0 ? <p className="requirement-picker-empty">This document has no approved requirements yet.</p> : <><div className="requirement-options-toolbar"><span><strong>{(form.selectedRequirementIds || []).filter(id => approvedRequirements.some(requirement => requirement.id === id)).length}</strong> of {approvedRequirements.length} selected</span><div><button type="button" onClick={() => setForm(current => ({ ...current, requirementDocumentId: activeDocumentId, selectedRequirementIds: approvedRequirements.map(requirement => requirement.id) }))}>Select all</button><button type="button" disabled={(form.selectedRequirementIds || []).length === 0} onClick={() => setForm(current => ({ ...current, selectedRequirementIds: [] }))}>Clear all</button></div></div><div className="requirement-options">{approvedRequirements.map(requirement => <label key={requirement.id}><input type="checkbox" checked={(form.selectedRequirementIds || []).includes(requirement.id)} onChange={() => setForm(current => ({ ...current, requirementDocumentId: activeDocumentId, selectedRequirementIds: (current.selectedRequirementIds || []).includes(requirement.id) ? current.selectedRequirementIds.filter(id => id !== requirement.id) : [...(current.selectedRequirementIds || []), requirement.id] }))} /><span><strong>{requirement.id}</strong>{requirement.text}</span></label>)}</div></>}
           </section>
           <div className="development-form-grid development-core-fields">
+            {approvedRequirements.length > 0 && <div className="brd-autofill-note">{icons.check}<span><strong>BRD scope ready</strong> Feature details and all {approvedRequirements.length} approved requirements were filled automatically. You can edit them before generation.</span></div>}
             <Field label="Feature name" required><input className={errors.featureName ? 'invalid' : ''} value={form.featureName} onChange={event => update('featureName', event.target.value)} placeholder="e.g. Team invitations" /></Field>
             <Field label="Module"><input value={form.module} onChange={event => update('module', event.target.value)} placeholder="e.g. Workspace members" /></Field>
             <Field label="Feature description" required wide><textarea className={errors.description ? 'invalid' : ''} rows="4" value={form.description} onChange={event => update('description', event.target.value)} placeholder="What is being built and what problem does it solve?" /></Field>

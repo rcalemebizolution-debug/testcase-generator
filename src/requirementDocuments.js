@@ -37,6 +37,40 @@ export function createRequirementDocument({ name, type, text }, ownerId) {
   }
 }
 
+export function createRequirementDocumentDefaults(requirementDocument) {
+  const approvedRequirements = (requirementDocument?.requirements || []).filter(requirement => requirement.approved)
+  if (!approvedRequirements.length) return { featureName: '', description: '', selectedRequirementIds: [] }
+
+  const cleanedName = String(requirementDocument?.name || '')
+    .replace(/\.[^.]+$/, '')
+    .replace(/\bv(?:ersion)?[\s._-]*\d+(?:\.\d+)*\b/gi, '')
+    .replace(/\b(?:brd|business requirements document|requirements?|specifications?|spec)\b/gi, '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const featureName = (cleanedName || 'BRD feature').replace(/\b\w/g, character => character.toUpperCase())
+  const count = approvedRequirements.length
+
+  return {
+    featureName,
+    description: `Validate the complete ${featureName} workflow against all ${count} approved requirement${count === 1 ? '' : 's'} from ${requirementDocument.name}.`,
+    selectedRequirementIds: approvedRequirements.map(requirement => requirement.id),
+  }
+}
+
+export function applyRequirementDocumentDefaults(form, requirementDocument) {
+  const defaults = createRequirementDocumentDefaults(requirementDocument)
+  if (!defaults.selectedRequirementIds.length) return form
+
+  return {
+    ...form,
+    requirementDocumentId: requirementDocument.id,
+    featureName: form.featureName?.trim() ? form.featureName : defaults.featureName,
+    description: form.description?.trim() ? form.description : defaults.description,
+    selectedRequirementIds: form.selectedRequirementIds?.length ? form.selectedRequirementIds : defaults.selectedRequirementIds,
+  }
+}
+
 export function buildRequirementCoverage(requirements, suites) {
   return (requirements || []).map(requirement => {
     const caseIds = []
