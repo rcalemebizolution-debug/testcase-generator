@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { assignUnownedSuites, createSuiteSnapshot, getSuitesForUser, persistSavedSuite, updateCaseField, updateCaseSteps } from './suiteStorage.js'
+import { downloadTestCaseCsv } from './testCaseCsv.js'
+import { buildRequirementCoverage, createRequirementDocument, loadRequirementDocuments, readRequirementFile, saveRequirementDocuments } from './requirementDocuments.js'
+import { developmentBlankForm, developmentExample, createDevelopmentAiPayload, createDevelopmentCases } from './developmentTestDesign.js'
+import { assignUnownedSuites, createSuiteSnapshot, getSuitesForUser, getSuitesForWorkspace, persistSavedSuite, updateCaseField, updateCaseSteps } from './suiteStorage.js'
 import { isEffectiveAdmin, loginUser, registerUser, setUserRole, setUserStatus, updateUserProfile } from './authStorage.js'
 import { loadAppData, saveDraftToDatabase, saveSessionToDatabase, saveSuitesToDatabase, saveUsersToDatabase } from './appDatabase.js'
 import { supabaseEnabled } from './supabaseClient.js'
@@ -240,6 +243,288 @@ function ProfilePanel({ form, error, onUpdate, onSubmit, onCancel }) {
   </section>
 }
 
+function WorkspaceChooser({ user, onSelect, onLogout }) {
+  return <main className="workspace-choice-shell">
+    <section className="workspace-choice-card">
+      <div className="auth-brand"><div>{icons.spark}</div><span>casecraft<small>QA workspace</small></span></div>
+      <div className="workspace-choice-heading"><span>Welcome, {user.name}</span><h1>Choose your workspace</h1><p>Select how you want to create and manage test cases.</p></div>
+      <div className="workspace-choice-grid">
+        <button className="development-choice" onClick={() => onSelect('development')}><i>{icons.plus}</i><strong>Development</strong><span>Create test cases for new features before release.</span></button>
+        <button className="maintenance-choice" onClick={() => onSelect('maintenance')}><i>{icons.settings}</i><strong>Maintenance</strong><span>Create regression and issue-based test cases for an existing application.</span></button>
+      </div>
+      <button className="workspace-choice-logout" onClick={onLogout}>Logout</button>
+    </section>
+  </main>
+}
+
+function DevelopmentWorkspace({ user, onSwitch, onLogout, suites, savedSuites, onSuitesChange, onDelete }) {
+  const [form, setForm] = useState(developmentBlankForm)
+  const [errors, setErrors] = useState({})
+  const [cases, setCases] = useState([])
+  const [openCase, setOpenCase] = useState('')
+  const [activeView, setActiveView] = useState('generator')
+  const [aiEnabled, setAiEnabled] = useState(true)
+  const [accessCode, setAccessCode] = useState('')
+  const [generating, setGenerating] = useState(false)
+  const [caseSource, setCaseSource] = useState('standard')
+  const [activeSuiteId, setActiveSuiteId] = useState('')
+  const [notice, setNotice] = useState('')
+  const [requirementDocuments, setRequirementDocuments] = useState(() => loadRequirementDocuments(user.id))
+  const [activeDocumentId, setActiveDocumentId] = useState('')
+
+  useEffect(() => { saveRequirementDocuments(user.id, requirementDocuments) }, [requirementDocuments, user.id])
+  useEffect(() => {
+    if (!activeDocumentId && requirementDocuments[0]) setActiveDocumentId(requirementDocuments[0].id)
+  }, [activeDocumentId, requirementDocuments])
+
+  const activeRequirementDocument = requirementDocuments.find(document => document.id === activeDocumentId)
+  const approvedRequirements = activeRequirementDocument?.requirements.filter(requirement => requirement.approved) || []
+  const requirementCoverage = useMemo(() => buildRequirementCoverage(requirementDocuments.flatMap(document => document.requirements.filter(requirement => requirement.approved)), suites), [requirementDocuments, suites])
+
+  const update = (key, value) => {
+    setForm(current => ({ ...current, [key]: value }))
+    setErrors(current => ({ ...current, [key]: false }))
+  }
+
+  const generate = async event => {
+    event.preventDefault()
+    const standard = createDevelopmentCases(form)
+    setErrors(standard.errors)
+    if (!standard.ok) {
+      setNotice('Please complete the highlighted fields.')
+      return
+    }
+    if (aiEnabled && !accessCode.trim()) {
+      setNotice('Enter your AI access code, or choose Standard rules.')
+      return
+    }
+    setGenerating(true)
+    if (!aiEnabled) {
+      setCases(standard.cases)
+      setOpenCase(standard.cases[0]?.id || '')
+      setCaseSource('standard')
+      setActiveSuiteId('')
+      setNotice(`${standard.cases.length} standard development test cases generated`)
+      setGenerating(false)
+      return
+    }
+    try {
+      const response = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-app-access-code': accessCode.trim() },
+        body: JSON.stringify(createDevelopmentAiPayload({
+          ...form,
+          selectedRequirements: approvedRequirements.filter(requirement => (form.selectedRequirementIds || []).includes(requirement.id)),
+        })),
+      })
+      const responseText = await response.text()
+      let payload = {}
+      try { payload = responseText ? JSON.parse(responseText) : {} } catch { throw new Error('AI endpoint did not return JSON.') }
+      if (!response.ok) throw new Error(payload.error || 'AI generation failed.')
+      const aiCases = normalizeCases(payload.cases).map((item, index) => ({ ...item, id: `DTC-${String(index + 1).padStart(3, '0')}`, requirementIds: [...(form.selectedRequirementIds || [])] }))
+      if (!aiCases.length) throw new Error('AI returned an empty test suite.')
+      setCases(aiCases)
+      setOpenCase(aiCases[0]?.id || '')
+      setCaseSource('ai')
+      setActiveSuiteId('')
+      setNotice(`${aiCases.length} AI development test cases generated`)
+    } catch (error) {
+      setCases(standard.cases)
+      setOpenCase(standard.cases[0]?.id || '')
+      setCaseSource('standard')
+      setActiveSuiteId('')
+      setNotice(`AI unavailable: ${error.message} Standard cases generated instead.`)
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const clear = () => {
+    setForm(developmentBlankForm)
+    setErrors({})
+    setCases([])
+    setOpenCase('')
+    setActiveSuiteId('')
+    setCaseSource('standard')
+  }
+
+  const downloadDevelopmentCsv = () => {
+    const featureSlug = form.featureName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'development'
+    downloadTestCaseCsv(cases, `${featureSlug}-test-cases.csv`)
+    setNotice('Development CSV downloaded in the Maintenance format')
+    setTimeout(() => setNotice(''), 2000)
+  }
+
+  const saveDevelopmentSuite = async () => {
+    if (!cases.length) {
+      setNotice('Generate test cases before saving the suite.')
+      return
+    }
+    const snapshot = createSuiteSnapshot({ form, cases, source: caseSource, existingId: activeSuiteId, ownerId: user.id, workspace: 'development' })
+    const nextSuites = await persistSavedSuite({ savedSuites, snapshot, save: saveSuitesToDatabase })
+    onSuitesChange(nextSuites)
+    clear()
+    setNotice(activeSuiteId ? 'Development suite updated and generator cleared' : 'Development suite saved in My test cases and generator cleared')
+  }
+
+  const loadDevelopmentSuite = suite => {
+    setForm({ ...developmentBlankForm, ...(suite.form || {}) })
+    setActiveDocumentId(suite.form?.requirementDocumentId || '')
+    setCases((suite.cases || []).map(item => ({ ...item, steps: [...(item.steps || [])] })))
+    setOpenCase(suite.cases?.[0]?.id || '')
+    setCaseSource(suite.source || 'standard')
+    setActiveSuiteId(suite.id)
+    setActiveView('generator')
+    setNotice('Development suite loaded for editing')
+  }
+
+  const viewTitle = {
+    generator: 'Development test designer',
+    requirements: 'Requirement documents',
+    suites: 'My Development Test Cases',
+    coverage: 'Requirement coverage',
+  }[activeView]
+
+  return <div className="app-shell development-shell">
+    <aside className="sidebar">
+      <div className="brand"><div>{icons.spark}</div><span>casecraft<small>Development</small></span></div>
+      <nav>
+        <button className={activeView === 'generator' ? 'active' : ''} onClick={() => setActiveView('generator')}><i>{icons.plus}</i><span>New suite</span></button>
+        <button className={activeView === 'requirements' ? 'active' : ''} onClick={() => setActiveView('requirements')}><i>{icons.file}</i><span>Requirements</span><b>{requirementDocuments.length}</b></button>
+        <button className={activeView === 'suites' ? 'active' : ''} onClick={() => setActiveView('suites')}><i>{icons.file}</i><span>My test cases</span><b>{suites.length}</b></button>
+        <button className={activeView === 'coverage' ? 'active' : ''} onClick={() => setActiveView('coverage')}><i>{icons.check}</i><span>Coverage</span><b>{requirementCoverage.filter(item => item.status === 'Uncovered').length}</b></button>
+      </nav>
+      <div className="sidebar-bottom"><button className="settings" onClick={onSwitch}><i>{icons.settings}</i><span>Switch workspace</span></button><div className="profile"><span>{user.name?.slice(0, 2).toUpperCase() || 'QA'}</span><p><strong>{user.name}</strong><small>{user.email}</small></p><button onClick={onLogout}>Logout</button></div></div>
+    </aside>
+    <main className="development-workspace">
+      <header className="development-topbar">
+        <div><p>Development <span>/</span> {viewTitle}</p><h1>{viewTitle}</h1></div>
+        <div><button onClick={onSwitch}>Switch workspace</button><button className="secondary" onClick={onLogout}>Logout</button></div>
+      </header>
+      {notice && <div className="toast">{icons.check}{notice}</div>}
+      {activeView === 'suites' ? <SavedSuitesPanel suites={suites} activeSuiteId={activeSuiteId} onLoad={loadDevelopmentSuite} onDelete={onDelete} onBack={() => setActiveView('generator')} />
+        : activeView === 'requirements' ? <RequirementsPanel user={user} documents={requirementDocuments} onChange={setRequirementDocuments} activeDocumentId={activeDocumentId} onSelectDocument={setActiveDocumentId} />
+        : activeView === 'coverage' ? <RequirementCoveragePanel coverage={requirementCoverage} documents={requirementDocuments} onBack={() => setActiveView('generator')} />
+        : <div className="development-layout">
+      <section className="development-form-panel">
+        <div className="development-heading"><span>Feature-based manual design</span><h1>Development test designer</h1><p>Describe a new feature and create structured manual test coverage before release.</p></div>
+        <form onSubmit={generate}>
+          <div className="development-source-options">
+            <div><button type="button" className={aiEnabled ? 'active' : ''} onClick={() => setAiEnabled(true)}>{icons.spark} Use AI</button><button type="button" className={!aiEnabled ? 'active' : ''} onClick={() => setAiEnabled(false)}>Standard rules</button></div>
+            {aiEnabled && <input type="password" value={accessCode} onChange={event => setAccessCode(event.target.value)} placeholder="AI access code" aria-label="AI access code" />}
+          </div>
+          <section className="requirement-picker">
+            <div className="requirement-picker-head"><div><strong>Source requirements</strong><small>Select approved BRD requirements for traceability.</small></div><select value={activeDocumentId} onChange={event => { setActiveDocumentId(event.target.value); setForm(current => ({ ...current, requirementDocumentId: event.target.value, selectedRequirementIds: [] })) }}><option value="">No requirement document</option>{requirementDocuments.map(document => <option key={document.id} value={document.id}>{document.name} · v{document.version}</option>)}</select></div>
+            {!activeRequirementDocument ? <p className="requirement-picker-empty">Upload and approve requirements from the Requirements page, or continue without a document.</p> : approvedRequirements.length === 0 ? <p className="requirement-picker-empty">This document has no approved requirements yet.</p> : <><div className="requirement-options-toolbar"><span><strong>{(form.selectedRequirementIds || []).filter(id => approvedRequirements.some(requirement => requirement.id === id)).length}</strong> of {approvedRequirements.length} selected</span><div><button type="button" onClick={() => setForm(current => ({ ...current, requirementDocumentId: activeDocumentId, selectedRequirementIds: approvedRequirements.map(requirement => requirement.id) }))}>Select all</button><button type="button" disabled={(form.selectedRequirementIds || []).length === 0} onClick={() => setForm(current => ({ ...current, selectedRequirementIds: [] }))}>Clear all</button></div></div><div className="requirement-options">{approvedRequirements.map(requirement => <label key={requirement.id}><input type="checkbox" checked={(form.selectedRequirementIds || []).includes(requirement.id)} onChange={() => setForm(current => ({ ...current, requirementDocumentId: activeDocumentId, selectedRequirementIds: (current.selectedRequirementIds || []).includes(requirement.id) ? current.selectedRequirementIds.filter(id => id !== requirement.id) : [...(current.selectedRequirementIds || []), requirement.id] }))} /><span><strong>{requirement.id}</strong>{requirement.text}</span></label>)}</div></>}
+          </section>
+          <div className="development-form-grid development-core-fields">
+            <Field label="Feature name" required><input className={errors.featureName ? 'invalid' : ''} value={form.featureName} onChange={event => update('featureName', event.target.value)} placeholder="e.g. Team invitations" /></Field>
+            <Field label="Module"><input value={form.module} onChange={event => update('module', event.target.value)} placeholder="e.g. Workspace members" /></Field>
+            <Field label="Feature description" required wide><textarea className={errors.description ? 'invalid' : ''} rows="4" value={form.description} onChange={event => update('description', event.target.value)} placeholder="What is being built and what problem does it solve?" /></Field>
+            <Field label="Priority"><select value={form.priority} onChange={event => update('priority', event.target.value)}><option>Low</option><option>Medium</option><option>High</option><option>Critical</option></select></Field>
+            <Field label="Coverage"><select value={form.coverage} onChange={event => update('coverage', event.target.value)}><option>Focused</option><option>Balanced</option><option>Comprehensive</option></select></Field>
+          </div>
+          <details className="development-optional-context">
+            <summary><span><strong>Additional generation context</strong><small>Use these fields only when the selected requirements need more detail.</small></span><b>Optional</b></summary>
+            <div className="development-form-grid">
+              <Field label="User roles" hint="One role per line"><textarea rows="3" value={form.userRoles} onChange={event => update('userRoles', event.target.value)} placeholder={'Workspace owner\nInvited teammate'} /></Field>
+              <Field label="Primary user flow" hint="One step per line"><textarea rows="5" value={form.userFlow} onChange={event => update('userFlow', event.target.value)} placeholder={'Open the feature\nComplete the main action\nConfirm the result'} /></Field>
+              <Field label="Expected behavior" wide><textarea rows="3" value={form.expectedBehavior} onChange={event => update('expectedBehavior', event.target.value)} placeholder="What should happen when the feature succeeds?" /></Field>
+              <Field label="Acceptance criteria" hint="One criterion per line"><textarea rows="5" value={form.acceptanceCriteria} onChange={event => update('acceptanceCriteria', event.target.value)} placeholder={'Authorized users can complete the action\nA confirmation is displayed'} /></Field>
+              <Field label="Dependencies" hint="One dependency per line"><textarea rows="4" value={form.dependencies} onChange={event => update('dependencies', event.target.value)} placeholder={'Authentication service\nNotification service'} /></Field>
+              <Field label="Edge cases" hint="One scenario per line"><textarea rows="4" value={form.edgeCases} onChange={event => update('edgeCases', event.target.value)} placeholder={'Duplicate request\nExpired data\nMaximum-length input'} /></Field>
+            </div>
+          </details>
+          <div className="development-actions"><button type="button" className="example" onClick={() => { setForm(developmentExample); setErrors({}); setCases([]); setOpenCase('') }}>Example</button><button type="button" className="secondary" onClick={clear}>Clear</button>{cases.length > 0 && <button type="button" className="save-suite" onClick={saveDevelopmentSuite}>{icons.save} {activeSuiteId ? 'Update suite' : 'Save suite'}</button>}<button type="submit" className="generate" disabled={generating}>{icons.wand} {generating ? 'Generating...' : aiEnabled ? 'Generate with AI' : 'Generate standard cases'}</button></div>
+        </form>
+      </section>
+      <section className="development-results">
+        <div className="development-results-head"><div><span>Generated coverage</span><h2>{cases.length ? `${cases.length} test cases` : 'Ready to design'}</h2></div>{cases.length > 0 && <aside className="development-result-actions"><div className="summary-types"><span>Feature</span><span>Roles</span><span>Dependencies</span></div><button type="button" onClick={downloadDevelopmentCsv} title="Download CSV">{icons.download}<span>CSV</span></button></aside>}</div>
+        {cases.length === 0 ? <div className="development-empty"><i>{icons.wand}</i><h3>Your development test cases will appear here</h3><p>Complete the feature brief and generate coverage for the primary flow, acceptance criteria, roles, dependencies, and edge cases.</p></div> : <div className="development-case-list">{cases.map(item => <article key={item.id} className={openCase === item.id ? 'open' : ''}>
+          <button className="development-case-head" onClick={() => setOpenCase(openCase === item.id ? '' : item.id)}><span>{item.type}</span><div><small>{item.id} · {item.module || 'Development'}</small><strong>{item.title}</strong></div><b>{item.priority}</b></button>
+          {openCase === item.id && <div className="development-case-body">{item.requirementIds?.length > 0 && <section className="case-requirements"><h4>Source requirements</h4><div>{item.requirementIds.map(id => <span key={id}>{id}</span>)}</div></section>}<section><h4>Description</h4><p>{item.description}</p></section><section><h4>Precondition</h4><p>{item.precondition}</p></section><section><h4>Test steps</h4><ol>{item.steps.map((step, index) => <li key={index}><span>{index + 1}</span><p>{step}</p></li>)}</ol></section><section className="expected"><h4>Expected result</h4><p>{item.expected}</p></section></div>}
+        </article>)}</div>}
+      </section>
+    </div>}
+    </main>
+  </div>
+}
+
+function RequirementsPanel({ user, documents, onChange, activeDocumentId, onSelectDocument }) {
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+  const [pasteName, setPasteName] = useState('Registration requirements')
+  const [pastedText, setPastedText] = useState('')
+  const activeDocument = documents.find(item => item.id === activeDocumentId) || documents[0]
+
+  const addDocument = (requirementDocument) => {
+    onChange(current => [requirementDocument, ...current])
+    onSelectDocument(requirementDocument.id)
+    setMessage(`${requirementDocument.requirements.length} requirement statements extracted. Review and approve them below.`)
+  }
+
+  const upload = async event => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    if (file.size > 8 * 1024 * 1024) {
+      setMessage('The document is larger than the 8 MB local prototype limit.')
+      return
+    }
+    setBusy(true)
+    setMessage('Reading document locally...')
+    try {
+      const text = await readRequirementFile(file)
+      addDocument(createRequirementDocument({ name: file.name, type: file.type, text }, user.id))
+    } catch (error) {
+      setMessage(error.message || 'The document could not be read.')
+    } finally {
+      event.target.value = ''
+      setBusy(false)
+    }
+  }
+
+  const addPasted = () => {
+    if (!pastedText.trim()) return setMessage('Paste requirement text before adding the document.')
+    addDocument(createRequirementDocument({ name: pasteName.trim() || 'Pasted requirements', type: 'text/plain', text: pastedText }, user.id))
+    setPastedText('')
+  }
+
+  const updateActive = updater => onChange(current => current.map(item => item.id === activeDocument.id ? { ...updater(item), updatedAt: new Date().toISOString() } : item))
+  const updateRequirement = (index, patchValue) => updateActive(item => ({ ...item, requirements: item.requirements.map((requirement, position) => position === index ? { ...requirement, ...patchValue } : requirement) }))
+  const deleteRequirement = index => updateActive(item => ({ ...item, requirements: item.requirements.filter((_, position) => position !== index) }))
+  const removeDocument = () => {
+    if (!activeDocument) return
+    onChange(current => current.filter(item => item.id !== activeDocument.id))
+    onSelectDocument('')
+  }
+
+  return <section className="requirements-page">
+    <div className="requirements-intro"><div><span>Local requirements library</span><h2>Upload and review the source requirements</h2><p>Documents stay in this browser. Casecraft extracts candidate requirements, but QA decides which requirements are approved for test generation.</p></div><label className="upload-requirements"><input type="file" accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" onChange={upload} disabled={busy} />{icons.file}<strong>{busy ? 'Reading...' : 'Upload BRD'}</strong><small>PDF, DOCX or TXT · up to 8 MB</small></label></div>
+    {message && <div className="requirements-message">{message}</div>}
+    <div className="requirements-paste"><input value={pasteName} onChange={event => setPasteName(event.target.value)} placeholder="Document title" /><textarea value={pastedText} onChange={event => setPastedText(event.target.value)} rows="3" placeholder="Or paste BRD requirements here..." /><button onClick={addPasted}>Add pasted requirements</button></div>
+    <div className="requirements-workspace">
+      <aside><h3>Documents <span>{documents.length}</span></h3>{documents.length === 0 ? <p>No documents uploaded yet.</p> : documents.map(item => <button key={item.id} className={item.id === activeDocument?.id ? 'active' : ''} onClick={() => onSelectDocument(item.id)}><strong>{item.name}</strong><small>v{item.version} · {item.requirements.length} requirements</small></button>)}</aside>
+      <div className="requirement-review">
+        {!activeDocument ? <div className="requirements-empty"><h3>Start with a BRD</h3><p>Upload a document or paste requirement text. Extracted requirements will appear here for QA review.</p></div> : <>
+          <header><div><input value={activeDocument.name} onChange={event => updateActive(item => ({ ...item, name: event.target.value }))} /><label>Version <input value={activeDocument.version} onChange={event => updateActive(item => ({ ...item, version: event.target.value }))} /></label></div><button className="delete-document" onClick={removeDocument}>Delete document</button></header>
+          <div className="review-summary"><span><strong>{activeDocument.requirements.filter(item => item.approved).length}</strong> approved</span><span><strong>{activeDocument.requirements.length}</strong> extracted</span><button onClick={() => updateActive(item => ({ ...item, requirements: item.requirements.map(requirement => ({ ...requirement, approved: true })) }))}>Approve all</button></div>
+          <div className="requirement-review-list">{activeDocument.requirements.length === 0 ? <p>No requirement-like statements were detected. Paste clearer statements containing “must” or “shall,” or add one manually.</p> : activeDocument.requirements.map((requirement, index) => <article key={`${requirement.id}-${index}`} className={requirement.approved ? 'approved' : ''}><label className="approve-check"><input type="checkbox" checked={requirement.approved} onChange={event => updateRequirement(index, { approved: event.target.checked })} /><span>{requirement.approved ? 'Approved' : 'Review'}</span></label><input className="requirement-id" value={requirement.id} onChange={event => updateRequirement(index, { id: event.target.value.toUpperCase() })} /><textarea rows="2" value={requirement.text} onChange={event => updateRequirement(index, { text: event.target.value })} /><button onClick={() => deleteRequirement(index)}>Remove</button></article>)}</div>
+          <button className="add-requirement" onClick={() => updateActive(item => ({ ...item, requirements: [...item.requirements, { id: `REQ-${String(item.requirements.length + 1).padStart(3, '0')}`, text: '', approved: false }] }))}>+ Add requirement</button>
+        </>}
+      </div>
+    </div>
+  </section>
+}
+
+function RequirementCoveragePanel({ coverage, documents, onBack }) {
+  const covered = coverage.filter(item => item.status === 'Covered').length
+  return <section className="coverage-page">
+    <div className="coverage-heading"><div><span>Traceability matrix</span><h2>Requirement coverage</h2><p>Coverage is calculated from approved requirements referenced by saved Development test cases.</p></div><button onClick={onBack}>Back to generator</button></div>
+    <div className="coverage-stats"><article><strong>{documents.length}</strong><span>Documents</span></article><article><strong>{coverage.length}</strong><span>Approved requirements</span></article><article><strong>{covered}</strong><span>Covered</span></article><article className="uncovered"><strong>{coverage.length - covered}</strong><span>Uncovered</span></article></div>
+    {coverage.length === 0 ? <div className="coverage-empty"><h3>No approved requirements yet</h3><p>Upload a BRD, approve its requirements, select them during generation, and save the resulting suite.</p></div> : <div className="coverage-table"><div className="coverage-row heading"><span>Requirement</span><span>Requirement text</span><span>Test cases</span><span>Status</span></div>{coverage.map(item => <div className="coverage-row" key={item.id}><strong>{item.id}</strong><p>{item.text}</p><div>{item.caseIds.length ? item.caseIds.map(caseId => <span key={caseId}>{caseId}</span>) : '—'}</div><b className={item.status.toLowerCase()}>{item.status}</b></div>)}</div>}
+  </section>
+}
+
 function SavedSuitesPanel({ suites, activeSuiteId, onLoad, onDelete, onBack }) {
   const [query, setQuery] = useState('')
   const filteredSuites = useMemo(() => {
@@ -332,6 +617,7 @@ export default function App() {
   const [authForm, setAuthForm] = useState(blankAuthForm)
   const [authError, setAuthError] = useState('')
   const [databaseReady, setDatabaseReady] = useState(false)
+  const [workspaceMode, setWorkspaceMode] = useState(null)
   const [activeView, setActiveView] = useState('generator')
   const [profileForm, setProfileForm] = useState(blankProfileForm)
   const [profileError, setProfileError] = useState('')
@@ -365,7 +651,9 @@ export default function App() {
   useEffect(() => { if (databaseReady && !supabaseEnabled) saveUsersToDatabase(users) }, [users, databaseReady])
   useEffect(() => { if (databaseReady && !supabaseEnabled) saveSessionToDatabase(session) }, [session, databaseReady])
   const completed = useMemo(() => ['mainModule','subModule','issueTitle','issueDetails','precondition','testSteps'].filter(k => form[k].trim()).length, [form])
-  const mySuites = useMemo(() => getSuitesForUser(savedSuites, session?.id), [savedSuites, session?.id])
+  const ownedSuites = useMemo(() => getSuitesForUser(savedSuites, session?.id), [savedSuites, session?.id])
+  const mySuites = useMemo(() => getSuitesForWorkspace(ownedSuites, 'maintenance'), [ownedSuites])
+  const developmentSuites = useMemo(() => getSuitesForWorkspace(ownedSuites, 'development'), [ownedSuites])
 
   const updateAuth = (key, value) => {
     setAuthForm(form => ({ ...form, [key]: value }))
@@ -423,6 +711,7 @@ export default function App() {
   }
 
   const logout = async () => {
+    setWorkspaceMode(null)
     if (supabaseEnabled) await logoutSupabaseUser()
     setSession(null)
     setAccessCode('')
@@ -593,30 +882,17 @@ export default function App() {
     setTimeout(() => setNotice(''), 2000)
   }
   const download = () => {
-    const headers = ['Test Cases #', 'Priority', 'Module', 'Sub-Module', 'Test Scenario', 'Description', 'Pre-Condition', 'Steps / Test Data', 'Expected Result', 'Actual Result', 'Status', 'Bug Link/ID', 'Tester', 'Date Tested', 'Remarks']
-    const escapeCsv = value => `"${String(value ?? '').replace(/"/g, '""')}"`
-    const rows = cases.map(item => [
-      item.id,
-      item.priority,
-      item.module,
-      item.subModule,
-      item.title,
-      item.description,
-      item.precondition,
-      item.steps.map((step, index) => `${index + 1}. ${step}`).join('\n'),
-      item.expected,
-      '', '', '', '', '', '',
-    ])
-    const csv = [headers, ...rows].map(row => row.map(escapeCsv).join(',')).join('\r\n')
-    const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' })
-    const a = document.createElement('a')
-    const url = URL.createObjectURL(blob); a.href = url; a.download = 'test-case-suite.csv'; a.click(); URL.revokeObjectURL(url)
+    downloadTestCaseCsv(cases)
     setNotice('CSV downloaded'); setTimeout(() => setNotice(''), 2000)
   }
 
   if (!databaseReady) return <main className="auth-shell"><section className="auth-card"><div className="auth-brand"><div>{icons.spark}</div><span>casecraft<small>QA workspace</small></span></div><div className="auth-intro"><span>Loading</span><h1>Opening workspace database</h1><p>Preparing your local Casecraft data.</p></div></section></main>
 
   if (!session) return <AuthScreen mode={authMode} form={authForm} error={authError} onModeChange={mode => { setAuthMode(mode); setAuthError('') }} onUpdate={updateAuth} onSubmit={submitAuth} />
+
+  if (!workspaceMode) return <WorkspaceChooser user={session} onSelect={setWorkspaceMode} onLogout={logout} />
+
+  if (workspaceMode === 'development') return <DevelopmentWorkspace user={session} onSwitch={() => setWorkspaceMode(null)} onLogout={logout} suites={developmentSuites} savedSuites={savedSuites} onSuitesChange={setSavedSuites} onDelete={deleteSuite} />
 
   return <div className="app-shell">
     <aside className="sidebar">
@@ -637,7 +913,7 @@ export default function App() {
     <main>
       <header className="topbar">
         <div><p>Workspace <span>/</span> {activeView === 'profile' ? 'Profile settings' : activeView === 'suites' ? 'My test cases' : activeView === 'admin' && adminAllowed ? 'Admin / Users' : 'New test suite'}</p><h1>{activeView === 'profile' ? 'Profile Settings' : activeView === 'suites' ? 'My Test Cases' : activeView === 'admin' && adminAllowed ? 'User Management' : 'Test case generator'}</h1></div>
-        <div className="status"><span>Signed in as {session.name}</span><button className="logout-top" onClick={logout}>Logout</button><i>{icons.check}</i></div>
+        <div className="status"><span>Signed in as {session.name}</span><button className="switch-workspace" onClick={() => setWorkspaceMode(null)}>Switch workspace</button><button className="logout-top" onClick={logout}>Logout</button><i>{icons.check}</i></div>
       </header>
 
       {activeView === 'profile' ? <ProfilePanel form={profileForm} error={profileError} onUpdate={updateProfileField} onSubmit={submitProfile} onCancel={() => setActiveView('generator')} /> : activeView === 'suites' ? <SavedSuitesPanel suites={mySuites} activeSuiteId={activeSuiteId} onLoad={suite => { loadSuite(suite); setActiveView('generator') }} onDelete={deleteSuite} onBack={() => setActiveView('generator')} /> : activeView === 'admin' && adminAllowed ? <AdminPanel users={users} session={session} onDeleteUser={deleteUser} onRoleChange={changeUserRole} onStatusChange={changeUserStatus} /> : <div className="workspace">

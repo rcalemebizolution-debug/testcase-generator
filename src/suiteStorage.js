@@ -8,18 +8,20 @@ export function stepsFromText(text) {
   return String(text || '').split('\n').map(cleanStepText).filter(Boolean)
 }
 
-export function createSuiteSnapshot({ form, cases, source = 'standard', existingId, ownerId } = {}) {
+export function createSuiteSnapshot({ form, cases, source = 'standard', existingId, ownerId, workspace = 'maintenance' } = {}) {
   const now = new Date().toISOString()
   const safeForm = { ...(form || {}) }
   const safeCases = Array.isArray(cases) ? cases.map(item => ({ ...item, steps: [...(item.steps || [])] })) : []
+  const development = workspace === 'development'
 
   return {
     id: existingId || `suite-${Date.now()}`,
-    title: String(safeForm.issueTitle || '').trim() || fallbackTitle,
-    module: String(safeForm.mainModule || '').trim(),
-    subModule: String(safeForm.subModule || '').trim(),
+    title: String(development ? safeForm.featureName : safeForm.issueTitle || '').trim() || fallbackTitle,
+    module: String(development ? safeForm.module : safeForm.mainModule || '').trim(),
+    subModule: String(development ? '' : safeForm.subModule || '').trim(),
     caseCount: safeCases.length,
     source,
+    ...(workspace === 'development' ? { workspace } : {}),
     ...(ownerId ? { ownerId } : {}),
     form: safeForm,
     cases: safeCases,
@@ -32,6 +34,12 @@ export function getSuitesForUser(suites, userId) {
   return (suites || []).filter(suite => suite.ownerId === userId)
 }
 
+export function getSuitesForWorkspace(suites, workspace) {
+  return (suites || []).filter(suite => workspace === 'development'
+    ? suite.workspace === 'development'
+    : suite.workspace !== 'development')
+}
+
 export function assignUnownedSuites(suites, userId) {
   if (!userId) return suites || []
   return (suites || []).map(suite => suite.ownerId ? suite : { ...suite, ownerId: userId })
@@ -40,8 +48,11 @@ export function assignUnownedSuites(suites, userId) {
 export async function persistSavedSuite({ savedSuites = [], snapshot, save, limit = 12 } = {}) {
   let nextSuites
   if (snapshot.ownerId) {
-    const otherSuites = savedSuites.filter(item => item.ownerId !== snapshot.ownerId)
-    const ownerSuites = [snapshot, ...savedSuites.filter(item => item.ownerId === snapshot.ownerId && item.id !== snapshot.id)].slice(0, limit)
+    const snapshotWorkspace = snapshot.workspace === 'development' ? 'development' : 'maintenance'
+    const belongsToCollection = item => item.ownerId === snapshot.ownerId
+      && (item.workspace === 'development' ? 'development' : 'maintenance') === snapshotWorkspace
+    const otherSuites = savedSuites.filter(item => !belongsToCollection(item))
+    const ownerSuites = [snapshot, ...savedSuites.filter(item => belongsToCollection(item) && item.id !== snapshot.id)].slice(0, limit)
     nextSuites = [...ownerSuites, ...otherSuites]
   } else {
     nextSuites = [snapshot, ...savedSuites.filter(item => item.id !== snapshot.id)].slice(0, limit)

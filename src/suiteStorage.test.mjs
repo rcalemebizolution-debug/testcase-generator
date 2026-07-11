@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { assignUnownedSuites, createSuiteSnapshot, getSuitesForUser, persistSavedSuite, updateCaseField, updateCaseSteps } from './suiteStorage.js'
+import { assignUnownedSuites, createSuiteSnapshot, getSuitesForUser, getSuitesForWorkspace, persistSavedSuite, updateCaseField, updateCaseSteps } from './suiteStorage.js'
 
 const baseForm = {
   mainModule: 'Authentication',
@@ -84,6 +84,32 @@ test('persistSavedSuite limits only the creator collection and preserves other u
 
   assert.equal(result.filter(item => item.ownerId === 'user-1').length, 12)
   assert.ok(result.some(item => item.id === 'theirs'))
+})
+
+test('development snapshots use feature metadata and remain separate from maintenance', () => {
+  const development = createSuiteSnapshot({
+    form: { featureName: 'Team invitation', module: 'Members' },
+    cases: baseCases,
+    ownerId: 'user-1',
+    workspace: 'development',
+  })
+  const maintenance = { id: 'legacy', ownerId: 'user-1', title: 'Legacy suite' }
+
+  assert.equal(development.title, 'Team invitation')
+  assert.equal(development.module, 'Members')
+  assert.equal(development.workspace, 'development')
+  assert.deepEqual(getSuitesForWorkspace([development, maintenance], 'development'), [development])
+  assert.deepEqual(getSuitesForWorkspace([development, maintenance], 'maintenance'), [maintenance])
+})
+
+test('workspace limits do not evict another workspace for the same creator', async () => {
+  const development = Array.from({ length: 12 }, (_, index) => ({ id: `dev-${index}`, ownerId: 'user-1', workspace: 'development' }))
+  const maintenance = [{ id: 'maintenance', ownerId: 'user-1' }]
+  const snapshot = { id: 'dev-new', ownerId: 'user-1', workspace: 'development' }
+  const result = await persistSavedSuite({ savedSuites: [...development, ...maintenance], snapshot, save: async () => {} })
+
+  assert.equal(getSuitesForWorkspace(result, 'development').length, 12)
+  assert.ok(result.some(item => item.id === 'maintenance'))
 })
 
 test('updateCaseField edits one case without mutating the original list', () => {

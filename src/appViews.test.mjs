@@ -47,3 +47,71 @@ test('My test cases provides an explicit Edit action', () => {
   assert.match(panelBody, /className="edit-suite"/)
   assert.match(panelBody, /onClick=\{\(\) => onLoad\(suite\)\}>Edit</)
 })
+
+test('authenticated users choose a workspace before entering Casecraft', () => {
+  assert.match(source, /const \[workspaceMode, setWorkspaceMode\] = useState\(null\)/)
+  assert.match(source, /if \(!workspaceMode\) return <WorkspaceChooser/)
+})
+
+test('workspace chooser offers development and maintenance', () => {
+  const chooser = source.slice(source.indexOf('function WorkspaceChooser'), source.indexOf('function DevelopmentWorkspace'))
+  assert.match(chooser, />Development</)
+  assert.match(chooser, />Maintenance</)
+  assert.match(chooser, /onSelect\('development'\)/)
+  assert.match(chooser, /onSelect\('maintenance'\)/)
+})
+
+test('development selection has a separate placeholder', () => {
+  assert.match(source, /if \(workspaceMode === 'development'\) return <DevelopmentWorkspace/)
+})
+
+test('Development designer provides an Example button', () => {
+  const developmentBody = source.slice(source.indexOf('function DevelopmentWorkspace'), source.indexOf('function SavedSuitesPanel'))
+  assert.match(developmentBody, />Example</)
+  assert.match(developmentBody, /setForm\(developmentExample\)/)
+})
+
+test('Development follows Maintenance with AI, Standard, and My test cases', () => {
+  const developmentBody = source.slice(source.indexOf('function DevelopmentWorkspace'), source.indexOf('function SavedSuitesPanel'))
+  assert.match(developmentBody, /Use AI/)
+  assert.match(developmentBody, /Standard rules/)
+  assert.match(developmentBody, /My test cases/)
+  assert.match(developmentBody, /<SavedSuitesPanel/)
+})
+
+test('Development adds BRD requirements and traceability views', () => {
+  const developmentBody = source.slice(source.indexOf('function DevelopmentWorkspace'), source.indexOf('function SavedSuitesPanel'))
+  assert.match(developmentBody, />Requirements</)
+  assert.match(developmentBody, />Coverage</)
+  assert.match(developmentBody, /<RequirementsPanel/)
+  assert.match(developmentBody, /<RequirementCoveragePanel/)
+  assert.match(source, /Upload BRD/)
+  assert.match(source, /Source requirements/)
+})
+
+test('Development keeps supplemental BRD context optional and collapsible', () => {
+  const developmentBody = source.slice(source.indexOf('function DevelopmentWorkspace'), source.indexOf('function RequirementsPanel'))
+  assert.match(developmentBody, /<details className="development-optional-context">/)
+  assert.match(developmentBody, /Additional generation context/)
+  assert.match(developmentBody, /Optional/)
+})
+
+test('Development requirement picker supports selecting and clearing every approved requirement', () => {
+  const developmentBody = source.slice(source.indexOf('function DevelopmentWorkspace'), source.indexOf('function RequirementsPanel'))
+  assert.match(developmentBody, /Select all/)
+  assert.match(developmentBody, /Clear all/)
+  assert.match(developmentBody, /approvedRequirements\.map\(requirement => requirement\.id\)/)
+})
+
+test('Development test cases can download the Maintenance CSV format', () => {
+  const developmentBody = source.slice(source.indexOf('function DevelopmentWorkspace'), source.indexOf('function RequirementsPanel'))
+  assert.match(developmentBody, /downloadDevelopmentCsv/)
+  assert.match(developmentBody, /downloadTestCaseCsv\(cases/)
+  assert.match(developmentBody, /title="Download CSV"/)
+})
+
+test('logout clears the selected workspace', () => {
+  const logoutStart = source.indexOf('const logout')
+  const logoutBody = source.slice(logoutStart, source.indexOf('const update =', logoutStart))
+  assert.match(logoutBody, /setWorkspaceMode\(null\)/)
+})

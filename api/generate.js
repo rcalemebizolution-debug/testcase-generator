@@ -61,7 +61,8 @@ function normalizeLabel(value, allowed, fallback) {
 }
 
 function normalizeCase(testCase, index, input) {
-  const title = String(testCase.title || '').trim() || input.issueTitle
+  const featureTitle = input.workspace === 'development' ? input.featureName : input.issueTitle
+  const title = String(testCase.title || '').trim() || featureTitle
   const negativeFallback = /invalid|reject|prevent|denied|failure|error|missing|unauthori[sz]ed/i.test(title)
   const description = String(testCase.description || '').trim()
   const steps = Array.isArray(testCase.steps)
@@ -73,9 +74,11 @@ function normalizeCase(testCase, index, input) {
     type: normalizeLabel(testCase.type, CASE_TYPES, negativeFallback ? 'Negative' : 'Positive'),
     priority: normalizeLabel(testCase.priority, PRIORITIES, 'Medium'),
     title,
-    module: input.mainModule,
-    subModule: input.subModule,
-    description: description || `Verifies "${input.issueTitle}" based on the reported issue: ${input.issueDetails}`,
+    module: input.workspace === 'development' ? input.module : input.mainModule,
+    subModule: input.workspace === 'development' ? '' : input.subModule,
+    description: description || (input.workspace === 'development'
+      ? `Verifies "${input.featureName}" based on the supplied feature description: ${input.description}`
+      : `Verifies "${input.issueTitle}" based on the reported issue: ${input.issueDetails}`),
     precondition: String(testCase.precondition || input.precondition || 'User has access to the application.').trim(),
     steps: steps.length >= 2 ? steps : ['Open the relevant feature', 'Perform the test action', 'Observe the result'],
     expected: String(testCase.expected || 'The result is observable and matches the issue requirements.').trim(),
@@ -97,19 +100,23 @@ export default async function handler(req, res) {
   if (isRateLimited(ip)) return res.status(429).json({ error: 'Too many AI requests. Please wait one minute.' })
 
   const input = req.body || {}
-  const required = ['mainModule', 'subModule', 'issueTitle', 'issueDetails', 'testSteps']
+  const isDevelopment = input.workspace === 'development'
+  const required = isDevelopment ? ['featureName', 'description'] : ['mainModule', 'subModule', 'issueTitle', 'issueDetails', 'testSteps']
   if (required.some(key => typeof input[key] !== 'string' || !input[key].trim())) {
-    return res.status(400).json({ error: 'Required issue details are missing.' })
+    return res.status(400).json({ error: isDevelopment ? 'Required feature details are missing.' : 'Required issue details are missing.' })
   }
 
   const safeInput = Object.fromEntries(
     Object.entries(input).map(([key, value]) => [key, String(value).trim().slice(0, 4000)]),
   )
-  const desiredCount = safeInput.coverage === 'Thorough' ? 8 : safeInput.coverage === 'Focused' ? 3 : 5
+  const desiredCount = safeInput.coverage === 'Thorough' || safeInput.coverage === 'Comprehensive' ? 8 : safeInput.coverage === 'Focused' ? 3 : 5
 
   try {
     const model = process.env.GROQ_MODEL || 'openai/gpt-oss-120b'
-    const systemPrompt = `You are a senior QA engineer creating practical, real-world manual test cases. Return exactly ${desiredCount} distinct cases. Use the supplied module and sub-module exactly. The type field must be exactly one of: ${CASE_TYPES.join(', ')}. The priority field must be exactly one of: ${PRIORITIES.join(', ')}. Each description must clearly explain the specific scenario being verified and connect it directly to the supplied issue title and issue details. Cover realistic user behavior and the most relevant mix of happy path, invalid data, permissions, boundary values, interrupted workflows, integration failures, security, concurrency, session state, and recovery. Only include categories that genuinely apply. Make every step executable and every expected result observable and specific. Do not invent product requirements as facts; when an assumption is necessary, state it clearly in the description. Keep descriptions concise. Assign sequential IDs starting with TC-001.`
+    const contextInstruction = isDevelopment
+      ? 'Design tests for a new feature before release. Use the supplied feature name, description, roles, flow, expected behavior, acceptance criteria, dependencies, and edge cases. Use the supplied module when present.'
+      : 'Design tests for a maintenance issue. Use the supplied module and sub-module exactly and connect each scenario to the issue title and details.'
+    const systemPrompt = `You are a senior QA engineer creating practical, real-world manual test cases. ${contextInstruction} Return exactly ${desiredCount} distinct cases. The type field must be exactly one of: ${CASE_TYPES.join(', ')}. The priority field must be exactly one of: ${PRIORITIES.join(', ')}. Cover realistic user behavior and the most relevant mix of happy path, invalid data, permissions, boundary values, interrupted workflows, integration failures, security, concurrency, session state, and recovery. Only include categories that genuinely apply. Make every step executable and every expected result observable and specific. Do not invent product requirements as facts; when an assumption is necessary, state it clearly in the description. Keep descriptions concise. Assign sequential IDs starting with TC-001.`
 
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -121,7 +128,7 @@ export default async function handler(req, res) {
         model,
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Create a test suite from this issue context:\n${JSON.stringify(safeInput, null, 2)}` },
+          { role: 'user', content: `Create a test suite from this ${isDevelopment ? 'feature' : 'issue'} context:\n${JSON.stringify(safeInput, null, 2)}` },
         ],
         response_format: {
           type: 'json_schema',

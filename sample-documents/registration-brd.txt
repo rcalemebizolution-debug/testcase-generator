@@ -1,0 +1,111 @@
+BUSINESS REQUIREMENTS DOCUMENT
+Customer Registration
+
+Document ID: BRD-REG
+Version: 1.0
+Status: Draft for QA testing
+Owner: Product Management
+
+1. PURPOSE
+This document defines the business requirements for customer self-registration in the Casecraft sample customer portal. It is intended to test requirement extraction, approval, traceability, and Development test-case generation.
+
+2. BUSINESS OBJECTIVE
+Allow a new customer to create a secure account using an email address, verify ownership of that address, and access the portal after successful activation.
+
+3. SCOPE
+In scope:
+- Customer registration form
+- Client-side and server-side validation
+- Email uniqueness validation
+- Password policy enforcement
+- Terms and privacy consent
+- Email verification
+- Registration audit events
+- Basic abuse prevention
+
+Out of scope:
+- Social login
+- Enterprise single sign-on
+- Administrator-created accounts
+- Paid subscription selection
+- Identity document verification
+
+4. ACTORS
+- Visitor: an unauthenticated person creating an account
+- Customer: a registered and verified portal user
+- Support agent: an authorized employee who can view registration status but cannot see passwords
+
+5. FUNCTIONAL REQUIREMENTS
+
+BRD-REG-001: The system must allow an unauthenticated visitor to open the customer registration page.
+
+BRD-REG-002: The registration form must require the visitor's first name, last name, email address, password, password confirmation, acceptance of the Terms of Service, and acceptance of the Privacy Policy.
+
+BRD-REG-003: The system must trim leading and trailing spaces from first name, last name, and email address before validating or saving the registration.
+
+BRD-REG-004: The system must treat email addresses as case-insensitive when checking uniqueness.
+
+BRD-REG-005: The system must reject registration when the submitted email address is already associated with an existing account.
+
+BRD-REG-006: The system must validate that the email address follows a valid email format before submitting the registration.
+
+BRD-REG-007: The password must contain at least 8 characters, including at least one uppercase letter, one lowercase letter, one number, and one special character.
+
+BRD-REG-008: The system must reject registration when the password and password-confirmation values do not match.
+
+BRD-REG-009: The visitor must accept both the Terms of Service and Privacy Policy before registration can be submitted.
+
+BRD-REG-010: After valid registration data is submitted, the system must create the account in a Pending Verification status.
+
+BRD-REG-011: The system must send a verification email to the registered email address after creating a Pending Verification account.
+
+BRD-REG-012: The email-verification link must expire 24 hours after it is issued.
+
+BRD-REG-013: When a valid, unexpired verification link is used, the system must change the account status from Pending Verification to Active.
+
+BRD-REG-014: The system must reject an expired verification link and offer the customer an option to request a new verification email.
+
+BRD-REG-015: The system must not allow a Pending Verification account to log in until email verification is completed.
+
+BRD-REG-016: The system must display a confirmation message after successful registration without revealing whether any other email address is registered.
+
+BRD-REG-017: If the registration service is temporarily unavailable, the system must display a recoverable error and must not create a partial customer account.
+
+BRD-REG-018: The system must prevent duplicate accounts when the visitor submits the registration form multiple times during the same request.
+
+BRD-REG-019: The system must limit registration attempts from the same source to 5 attempts within 15 minutes and display a retry message when the limit is reached.
+
+BRD-REG-020: The system must record an audit event for account creation, verification-email issuance, successful verification, failed verification, and rate-limit enforcement.
+
+6. DATA AND PRIVACY REQUIREMENTS
+
+BRD-REG-021: Passwords must never be stored or logged in plain text.
+
+BRD-REG-022: Registration error messages and application logs must not expose the submitted password or password confirmation.
+
+BRD-REG-023: Support agents must be able to view the account's registration and verification status but must not be able to view password data.
+
+BRD-REG-024: The system must store the date, time, and policy version associated with the customer's Terms of Service and Privacy Policy consent.
+
+7. ACCESSIBILITY AND USABILITY REQUIREMENTS
+
+BRD-REG-025: Every registration input must have a visible label and an accessible programmatic name.
+
+BRD-REG-026: Validation errors must identify the affected field and must be available to keyboard and screen-reader users.
+
+BRD-REG-027: The registration flow must be operable using only a keyboard.
+
+BRD-REG-028: The registration page must preserve valid non-sensitive entries when a validation error is displayed, but it must not preserve password fields after a full page reload.
+
+8. ACCEPTANCE SUMMARY
+The Registration feature is accepted when a new visitor can submit valid details, receive and use a verification email, activate the account, and log in; invalid, duplicate, insecure, expired, inaccessible, and excessive-attempt scenarios must be handled according to the requirements above.
+
+9. ASSUMPTIONS
+- The email delivery provider is available and configured.
+- Terms of Service and Privacy Policy versions are maintained by the product team.
+- Rate-limit thresholds can be configured by an administrator in a future release.
+
+10. OPEN QUESTIONS
+- Should unverified accounts be deleted automatically after a retention period?
+- Should the customer be allowed to change the email address while verification is pending?
+- Is CAPTCHA required after repeated failed registration attempts?
