@@ -265,6 +265,7 @@ function SavedSuitesPanel({ suites, activeSuiteId, onLoad, onDelete, onBack }) {
       <div className="saved-suites">
         {suites.length === 0 ? <p>No saved suites yet. Generate test cases, then select Save suite.</p> : filteredSuites.length === 0 ? <p>No saved test cases match “{query}”.</p> : filteredSuites.map(suite => <article key={suite.id} className={suite.id === activeSuiteId ? 'active' : ''}>
           <button onClick={() => onLoad(suite)}><strong>{suite.title}</strong><span>{suite.caseCount} cases · {suite.module || 'No module'}</span><small>Saved {formatDate(suite.updatedAt || suite.createdAt)}</small></button>
+          <button className="edit-suite" onClick={() => onLoad(suite)}>Edit</button>
           <button className="delete-suite" onClick={() => onDelete(suite.id)} title="Delete saved suite">{icons.trash}</button>
         </article>)}
       </div>
@@ -497,8 +498,13 @@ export default function App() {
     try {
       const nextSuites = await persistSavedSuite({ savedSuites, snapshot, save: saveSuitesToDatabase })
       setSavedSuites(nextSuites)
-      setActiveSuiteId(snapshot.id)
-      setNotice(activeSuiteId ? 'Saved suite updated' : 'Suite saved in My test cases')
+      setForm(blankForm)
+      setCases([])
+      setActiveSuiteId('')
+      setOpenCase('')
+      setEditingCaseId('')
+      setCaseSource('standard')
+      setNotice(activeSuiteId ? 'Saved suite updated and generator cleared' : 'Suite saved in My test cases and generator cleared')
     } catch {
       setNotice('Suite could not be saved. Check browser storage permissions and try again.')
     }

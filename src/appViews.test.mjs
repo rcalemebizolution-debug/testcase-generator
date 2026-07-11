@@ -10,9 +10,12 @@ test('My test cases opens a dedicated suites view', () => {
   assert.match(source, /<SavedSuitesPanel suites=\{mySuites\}/)
 })
 
-test('saving a suite keeps the user in the generator', () => {
+test('saving a suite keeps the user in the generator and clears the completed work', () => {
   const saveSuiteBody = source.slice(source.indexOf('const saveSuite'), source.indexOf('const loadSuite'))
   assert.doesNotMatch(saveSuiteBody, /setActiveView\('suites'\)/)
+  assert.match(saveSuiteBody, /setForm\(blankForm\)/)
+  assert.match(saveSuiteBody, /setCases\(\[\]\)/)
+  assert.match(saveSuiteBody, /setActiveSuiteId\(''\)/)
 })
 
 test('My test cases has a Back button to the generator', () => {
@@ -37,4 +40,10 @@ test('My test cases supports search and displays the saved date and time', () =>
   assert.match(panelBody, /placeholder="Search saved test cases"/)
   assert.match(panelBody, /filteredSuites/)
   assert.match(panelBody, /formatDate\(suite\.updatedAt \|\| suite\.createdAt\)/)
+})
+
+test('My test cases provides an explicit Edit action', () => {
+  const panelBody = source.slice(source.indexOf('function SavedSuitesPanel'), source.indexOf('function formatDate'))
+  assert.match(panelBody, /className="edit-suite"/)
+  assert.match(panelBody, /onClick=\{\(\) => onLoad\(suite\)\}>Edit</)
 })
