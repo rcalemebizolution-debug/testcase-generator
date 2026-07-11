@@ -3,7 +3,7 @@ import { assignUnownedSuites, createSuiteSnapshot, getSuitesForUser, persistSave
 import { isEffectiveAdmin, loginUser, registerUser, setUserRole, setUserStatus, updateUserProfile } from './authStorage.js'
 import { loadAppData, saveDraftToDatabase, saveSessionToDatabase, saveSuitesToDatabase, saveUsersToDatabase } from './appDatabase.js'
 import { supabaseEnabled } from './supabaseClient.js'
-import { deleteSupabaseUser, loadSupabaseWorkspace, loginSupabaseUser, logoutSupabaseUser, registerSupabaseUser, setSupabaseUserRole, setSupabaseUserStatus, updateSupabaseProfile } from './supabaseAuth.js'
+import { deleteSupabaseUser, loginSupabaseUser, logoutSupabaseUser, registerSupabaseUser, setSupabaseUserRole, setSupabaseUserStatus, updateSupabaseProfile } from './supabaseAuth.js'
 
 const icons = {
   spark: <svg viewBox="0 0 24 24"><path d="m12 3 .8 4.2a5 5 0 0 0 4 4l4.2.8-4.2.8a5 5 0 0 0-4 4L12 21l-.8-4.2a5 5 0 0 0-4-4L3 12l4.2-.8a5 5 0 0 0 4-4L12 3Z"/></svg>,
@@ -331,11 +331,10 @@ export default function App() {
         if (!active) return
         setForm({ ...blankForm, ...(data.draft || {}) })
         let nextUsers = data.users || []
-        let nextSession = data.session || null
+        const nextSession = null
         if (supabaseEnabled) {
-          const supabaseData = await loadSupabaseWorkspace()
-          nextUsers = supabaseData?.users || []
-          nextSession = supabaseData?.session || null
+          await logoutSupabaseUser()
+          nextUsers = []
         }
         setSavedSuites(assignUnownedSuites(data.suites || [], nextSession?.id))
         setUsers(nextUsers)
