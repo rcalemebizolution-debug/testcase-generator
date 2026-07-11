@@ -31,3 +31,10 @@ test('opening the app starts logged out even when a prior session exists', () =>
   assert.match(startupBody, /await logoutSupabaseUser\(\)/)
   assert.match(startupBody, /nextSession = null/)
 })
+
+test('My test cases supports search and displays the saved date and time', () => {
+  const panelBody = source.slice(source.indexOf('function SavedSuitesPanel'), source.indexOf('function formatDate'))
+  assert.match(panelBody, /placeholder="Search saved test cases"/)
+  assert.match(panelBody, /filteredSuites/)
+  assert.match(panelBody, /formatDate\(suite\.updatedAt \|\| suite\.createdAt\)/)
+})

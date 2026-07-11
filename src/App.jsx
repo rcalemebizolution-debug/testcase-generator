@@ -241,6 +241,18 @@ function ProfilePanel({ form, error, onUpdate, onSubmit, onCancel }) {
 }
 
 function SavedSuitesPanel({ suites, activeSuiteId, onLoad, onDelete, onBack }) {
+  const [query, setQuery] = useState('')
+  const filteredSuites = useMemo(() => {
+    const normalized = query.trim().toLowerCase()
+    if (!normalized) return suites
+    return suites.filter(suite => [
+      suite.title,
+      suite.module,
+      suite.form?.subModule,
+      ...(suite.cases || []).map(item => item.title),
+    ].filter(Boolean).join(' ').toLowerCase().includes(normalized))
+  }, [query, suites])
+
   return <section className="cms-panel suites-panel">
     <div className="suite-toolbar"><button className="example" onClick={onBack}>Back</button></div>
     <div className="cms-hero">
@@ -249,9 +261,10 @@ function SavedSuitesPanel({ suites, activeSuiteId, onLoad, onDelete, onBack }) {
     </div>
     <div className="cms-list suite-library">
       <div className="saved-head"><strong>Saved suites</strong><span>Select a suite to open it in the generator</span></div>
+      <div className="suite-search"><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search saved test cases" aria-label="Search saved test cases" /></div>
       <div className="saved-suites">
-        {suites.length === 0 ? <p>No saved suites yet. Generate test cases, then select Save suite.</p> : suites.map(suite => <article key={suite.id} className={suite.id === activeSuiteId ? 'active' : ''}>
-          <button onClick={() => onLoad(suite)}><strong>{suite.title}</strong><span>{suite.caseCount} cases · {suite.module || 'No module'}</span></button>
+        {suites.length === 0 ? <p>No saved suites yet. Generate test cases, then select Save suite.</p> : filteredSuites.length === 0 ? <p>No saved test cases match “{query}”.</p> : filteredSuites.map(suite => <article key={suite.id} className={suite.id === activeSuiteId ? 'active' : ''}>
+          <button onClick={() => onLoad(suite)}><strong>{suite.title}</strong><span>{suite.caseCount} cases · {suite.module || 'No module'}</span><small>Saved {formatDate(suite.updatedAt || suite.createdAt)}</small></button>
           <button className="delete-suite" onClick={() => onDelete(suite.id)} title="Delete saved suite">{icons.trash}</button>
         </article>)}
       </div>
