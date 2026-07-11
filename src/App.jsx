@@ -273,9 +273,6 @@ function DevelopmentWorkspace({ user, onSwitch, onLogout, suites, savedSuites, o
   const [activeDocumentId, setActiveDocumentId] = useState('')
 
   useEffect(() => { saveRequirementDocuments(user.id, requirementDocuments) }, [requirementDocuments, user.id])
-  useEffect(() => {
-    if (!activeDocumentId && requirementDocuments[0]) setActiveDocumentId(requirementDocuments[0].id)
-  }, [activeDocumentId, requirementDocuments])
 
   const activeRequirementDocument = requirementDocuments.find(document => document.id === activeDocumentId)
   const approvedRequirements = activeRequirementDocument?.requirements.filter(requirement => requirement.approved) || []
@@ -346,6 +343,7 @@ function DevelopmentWorkspace({ user, onSwitch, onLogout, suites, savedSuites, o
 
   const clear = () => {
     setForm(developmentBlankForm)
+    setActiveDocumentId('')
     setErrors({})
     setCases([])
     setOpenCase('')

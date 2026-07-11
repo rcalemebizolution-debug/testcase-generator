@@ -89,6 +89,13 @@ test('Development adds BRD requirements and traceability views', () => {
   assert.match(source, /Source requirements/)
 })
 
+test('saving a Development suite clears its source requirement document', () => {
+  const developmentBody = source.slice(source.indexOf('function DevelopmentWorkspace'), source.indexOf('function RequirementsPanel'))
+  const clearBody = developmentBody.slice(developmentBody.indexOf('const clear ='), developmentBody.indexOf('const downloadDevelopmentCsv'))
+  assert.match(clearBody, /setActiveDocumentId\(''\)/)
+  assert.match(clearBody, /setForm\(developmentBlankForm\)/)
+})
+
 test('Development keeps supplemental BRD context optional and collapsible', () => {
   const developmentBody = source.slice(source.indexOf('function DevelopmentWorkspace'), source.indexOf('function RequirementsPanel'))
   assert.match(developmentBody, /<details className="development-optional-context">/)
