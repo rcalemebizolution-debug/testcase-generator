@@ -10,9 +10,9 @@ test('My test cases opens a dedicated suites view', () => {
   assert.match(source, /<SavedSuitesPanel suites=\{mySuites\}/)
 })
 
-test('saving a suite opens the My test cases view', () => {
+test('saving a suite keeps the user in the generator', () => {
   const saveSuiteBody = source.slice(source.indexOf('const saveSuite'), source.indexOf('const loadSuite'))
-  assert.match(saveSuiteBody, /setActiveView\('suites'\)/)
+  assert.doesNotMatch(saveSuiteBody, /setActiveView\('suites'\)/)
 })
 
 test('My test cases has a Back button to the generator', () => {

@@ -498,7 +498,6 @@ export default function App() {
       const nextSuites = await persistSavedSuite({ savedSuites, snapshot, save: saveSuitesToDatabase })
       setSavedSuites(nextSuites)
       setActiveSuiteId(snapshot.id)
-      setActiveView('suites')
       setNotice(activeSuiteId ? 'Saved suite updated' : 'Suite saved in My test cases')
     } catch {
       setNotice('Suite could not be saved. Check browser storage permissions and try again.')
