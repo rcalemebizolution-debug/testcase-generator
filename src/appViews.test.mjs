@@ -110,11 +110,12 @@ test('Development requirement picker supports selecting and clearing every appro
   assert.match(developmentBody, /approvedRequirements\.map\(requirement => requirement\.id\)/)
 })
 
-test('Development test cases can download the Maintenance CSV format', () => {
+test('CSV download is available from My test cases instead of generated Development results', () => {
   const developmentBody = source.slice(source.indexOf('function DevelopmentWorkspace'), source.indexOf('function RequirementsPanel'))
-  assert.match(developmentBody, /downloadDevelopmentCsv/)
-  assert.match(developmentBody, /downloadTestCaseCsv\(cases/)
-  assert.match(developmentBody, /title="Download CSV"/)
+  const savedSuitesBody = source.slice(source.indexOf('function SavedSuitesPanel'), source.indexOf('function formatDate'))
+  assert.doesNotMatch(developmentBody, /downloadDevelopmentCsv/)
+  assert.match(savedSuitesBody, /downloadTestCaseCsv\(suite\.cases/)
+  assert.match(savedSuitesBody, /title="Download CSV"/)
 })
 
 test('logout clears the selected workspace', () => {

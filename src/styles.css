@@ -102,6 +102,7 @@ input::placeholder, textarea::placeholder { color: #bab7af; } input:focus, texta
 .suite-library .saved-suites article small { color: #aaa69d; font-size: 9px; margin-top: 2px; }
 .suite-library .edit-suite { flex: 0 0 auto; width: auto; border: 1px solid #d8d4ca; border-radius: 7px; background: #f7f5ef; color: #55534d; padding: 7px 11px; font-size: 10px; font-weight: 800; }
 .suite-library .edit-suite:hover { border-color: #9ab85d; color: #4f692a; background: #f2f8e8; }
+.suite-library .download-suite { flex: 0 0 auto; width: auto; height: 30px; border: 1px solid #bdd783; border-radius: 7px; background: #eaf6d1; color: #466020; padding: 0 10px; display: inline-flex; align-items: center; gap: 5px; font-size: 9px; font-weight: 800; }.suite-library .download-suite:hover { border-color: #98ba50; background: #cfff6b; color: #293715; }.suite-library .download-suite svg { width: 13px; height: 13px; }.suite-library .download-suite span { color: inherit; font-size: inherit; }
 
 .workspace-choice-shell, .development-placeholder { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: radial-gradient(circle at top left, #fbfaf5 0, #f1eee5 48%, #e8e4da 100%); }
 .workspace-choice-card, .development-placeholder > section { width: min(900px, 100%); background: #fbfaf7; border: 1px solid #dedbd2; border-radius: 20px; padding: 36px; box-shadow: 0 22px 65px rgba(37,35,29,.12); }

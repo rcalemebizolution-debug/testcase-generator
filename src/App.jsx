@@ -351,13 +351,6 @@ function DevelopmentWorkspace({ user, onSwitch, onLogout, suites, savedSuites, o
     setCaseSource('standard')
   }
 
-  const downloadDevelopmentCsv = () => {
-    const featureSlug = form.featureName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'development'
-    downloadTestCaseCsv(cases, `${featureSlug}-test-cases.csv`)
-    setNotice('Development CSV downloaded in the Maintenance format')
-    setTimeout(() => setNotice(''), 2000)
-  }
-
   const saveDevelopmentSuite = async () => {
     if (!cases.length) {
       setNotice('Generate test cases before saving the suite.')
@@ -443,7 +436,7 @@ function DevelopmentWorkspace({ user, onSwitch, onLogout, suites, savedSuites, o
         </form>
       </section>
       <section className="development-results">
-        <div className="development-results-head"><div><span>Generated coverage</span><h2>{cases.length ? `${cases.length} test cases` : 'Ready to design'}</h2></div>{cases.length > 0 && <aside className="development-result-actions"><div className="summary-types"><span>Feature</span><span>Roles</span><span>Dependencies</span></div><button type="button" onClick={downloadDevelopmentCsv} title="Download CSV">{icons.download}<span>CSV</span></button></aside>}</div>
+        <div className="development-results-head"><div><span>Generated coverage</span><h2>{cases.length ? `${cases.length} test cases` : 'Ready to design'}</h2></div>{cases.length > 0 && <div className="summary-types"><span>Feature</span><span>Roles</span><span>Dependencies</span></div>}</div>
         {cases.length === 0 ? <div className="development-empty"><i>{icons.wand}</i><h3>Your development test cases will appear here</h3><p>Complete the feature brief and generate coverage for the primary flow, acceptance criteria, roles, dependencies, and edge cases.</p></div> : <div className="development-case-list">{cases.map(item => <article key={item.id} className={openCase === item.id ? 'open' : ''}>
           <button className="development-case-head" onClick={() => setOpenCase(openCase === item.id ? '' : item.id)}><span>{item.type}</span><div><small>{item.id} · {item.module || 'Development'}</small><strong>{item.title}</strong></div><b>{item.priority}</b></button>
           {openCase === item.id && <div className="development-case-body">{item.requirementIds?.length > 0 && <section className="case-requirements"><h4>Source requirements</h4><div>{item.requirementIds.map(id => <span key={id}>{id}</span>)}</div></section>}<section><h4>Description</h4><p>{item.description}</p></section><section><h4>Precondition</h4><p>{item.precondition}</p></section><section><h4>Test steps</h4><ol>{item.steps.map((step, index) => <li key={index}><span>{index + 1}</span><p>{step}</p></li>)}</ol></section><section className="expected"><h4>Expected result</h4><p>{item.expected}</p></section></div>}
@@ -555,6 +548,7 @@ function SavedSuitesPanel({ suites, activeSuiteId, onLoad, onDelete, onBack }) {
         {suites.length === 0 ? <p>No saved suites yet. Generate test cases, then select Save suite.</p> : filteredSuites.length === 0 ? <p>No saved test cases match “{query}”.</p> : filteredSuites.map(suite => <article key={suite.id} className={suite.id === activeSuiteId ? 'active' : ''}>
           <button onClick={() => onLoad(suite)}><strong>{suite.title}</strong><span>{suite.caseCount} cases · {suite.module || 'No module'}</span><small>Saved {formatDate(suite.updatedAt || suite.createdAt)}</small></button>
           <button className="edit-suite" onClick={() => onLoad(suite)}>Edit</button>
+          <button className="download-suite" onClick={() => downloadTestCaseCsv(suite.cases || [], `${String(suite.title || 'test-suite').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'test-suite'}-test-cases.csv`)} title="Download CSV">{icons.download}<span>CSV</span></button>
           <button className="delete-suite" onClick={() => onDelete(suite.id)} title="Delete saved suite">{icons.trash}</button>
         </article>)}
       </div>
