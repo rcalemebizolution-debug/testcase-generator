@@ -123,3 +123,10 @@ test('logout clears the selected workspace', () => {
   const logoutBody = source.slice(logoutStart, source.indexOf('const update =', logoutStart))
   assert.match(logoutBody, /setWorkspaceMode\(null\)/)
 })
+
+test('Maintenance lets testers attach one supported issue screenshot for AI analysis', () => {
+  assert.match(source, /label="Issue screenshot"/)
+  assert.match(source, /accept="image\/png,image\/jpeg,image\/webp"/)
+  assert.match(source, /onChange=\{handleIssueImageUpload\}/)
+  assert.match(source, /Screenshot is used only for AI-enhanced generation/)
+})

@@ -1,4 +1,5 @@
 import { timingSafeEqual } from 'node:crypto'
+import { createVisionUserContent, validateIssueImage } from '../src/issueImage.js'
 
 const RATE_WINDOW_MS = 60_000
 const RATE_LIMIT = 8
@@ -106,13 +107,22 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: isDevelopment ? 'Required feature details are missing.' : 'Required issue details are missing.' })
   }
 
+  const imageResult = input.issueImage ? validateIssueImage(input.issueImage) : { ok: true, image: null }
+  if (!imageResult.ok) return res.status(400).json({ error: imageResult.error })
+  if (imageResult.image && isDevelopment) return res.status(400).json({ error: 'Issue screenshots are available only in the Maintenance workspace.' })
+  if (imageResult.image && !process.env.GROQ_VISION_MODEL) {
+    return res.status(422).json({ error: 'Screenshot analysis is not configured. Add GROQ_VISION_MODEL before generating with an image.' })
+  }
+
   const safeInput = Object.fromEntries(
-    Object.entries(input).map(([key, value]) => [key, String(value).trim().slice(0, 4000)]),
+    Object.entries(input)
+      .filter(([key]) => key !== 'issueImage')
+      .map(([key, value]) => [key, String(value).trim().slice(0, 4000)]),
   )
   const desiredCount = safeInput.coverage === 'Thorough' || safeInput.coverage === 'Comprehensive' ? 8 : safeInput.coverage === 'Focused' ? 3 : 5
 
   try {
-    const model = process.env.GROQ_MODEL || 'openai/gpt-oss-120b'
+    const model = imageResult.image ? process.env.GROQ_VISION_MODEL : (process.env.GROQ_MODEL || 'openai/gpt-oss-120b')
     const contextInstruction = isDevelopment
       ? 'Design tests for a new feature before release. Use the supplied feature name, description, roles, flow, expected behavior, acceptance criteria, dependencies, and edge cases. Use the supplied module when present.'
       : 'Design tests for a maintenance issue. Use the supplied module and sub-module exactly and connect each scenario to the issue title and details.'
@@ -128,7 +138,7 @@ export default async function handler(req, res) {
         model,
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Create a test suite from this ${isDevelopment ? 'feature' : 'issue'} context:\n${JSON.stringify(safeInput, null, 2)}` },
+          { role: 'user', content: createVisionUserContent(`Create a test suite from this ${isDevelopment ? 'feature' : 'issue'} context:\n${JSON.stringify(safeInput, null, 2)}${imageResult.image ? '\n\nInspect the attached screenshot as issue evidence. Derive test scenarios from only visible UI behavior and clearly mark any uncertain interpretation as an assumption.' : ''}`, imageResult.image) },
         ],
         response_format: {
           type: 'json_schema',

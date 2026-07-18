@@ -8,6 +8,7 @@ import { loadAppData, saveDraftToDatabase, saveSessionToDatabase, saveSuitesToDa
 import { supabaseEnabled } from './supabaseClient.js'
 import { deleteSupabaseUser, loginSupabaseUser, logoutSupabaseUser, registerSupabaseUser, setSupabaseUserRole, setSupabaseUserStatus, updateSupabaseProfile } from './supabaseAuth.js'
 import { buildReleaseReadiness, validateGeneratedCases } from './qualityGovernance.js'
+import { validateIssueImage } from './issueImage.js'
 
 const icons = {
   spark: <svg viewBox="0 0 24 24"><path d="m12 3 .8 4.2a5 5 0 0 0 4 4l4.2.8-4.2.8a5 5 0 0 0-4 4L12 21l-.8-4.2a5 5 0 0 0-4-4L3 12l4.2-.8a5 5 0 0 0 4-4L12 3Z"/></svg>,
@@ -614,6 +615,7 @@ function AdminPanel({ users, session, onDeleteUser, onRoleChange, onStatusChange
 
 export default function App() {
   const [form, setForm] = useState(blankForm)
+  const [issueImage, setIssueImage] = useState(null)
   const [cases, setCases] = useState([])
   const [openCases, setOpenCases] = useState([0])
   const [notice, setNotice] = useState('')
@@ -740,6 +742,33 @@ export default function App() {
     setErrors(e => ({ ...e, [key]: false }))
   }
 
+  const handleIssueImageUpload = event => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 2 * 1024 * 1024) {
+      const result = validateIssueImage({ name: file.name, type: file.type, size: file.size, dataUrl: '' })
+      setNotice(result.error)
+      setTimeout(() => setNotice(''), 3200)
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = validateIssueImage({ name: file.name, type: file.type, size: file.size, dataUrl: reader.result })
+      if (result.ok) setIssueImage(result.image)
+      else {
+        setNotice(result.error)
+        setTimeout(() => setNotice(''), 3200)
+      }
+    }
+    reader.onerror = () => {
+      setNotice('The screenshot could not be read. Choose the image again.')
+      setTimeout(() => setNotice(''), 3200)
+    }
+    reader.readAsDataURL(file)
+  }
+
   const generate = async () => {
     const nextErrors = Object.fromEntries(['mainModule','subModule','issueTitle','issueDetails','testSteps'].map(k => [k, !form[k].trim()]))
     setErrors(nextErrors)
@@ -767,7 +796,7 @@ export default function App() {
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-app-access-code': accessCode.trim() },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, issueImage }),
       })
       const responseText = await response.text()
       let payload = {}
@@ -808,6 +837,7 @@ export default function App() {
       const nextSuites = await persistSavedSuite({ savedSuites, snapshot, save: saveSuitesToDatabase })
       setSavedSuites(nextSuites)
       setForm(blankForm)
+      setIssueImage(null)
       setCases([])
       setActiveSuiteId('')
       setOpenCase('')
@@ -944,6 +974,8 @@ export default function App() {
             <Field label="Sub module" required><input className={errors.subModule ? 'error' : ''} value={form.subModule} onChange={e => update('subModule', e.target.value)} placeholder="e.g. Password recovery" /></Field>
             <Field label="Issue title" required wide><input className={errors.issueTitle ? 'error' : ''} value={form.issueTitle} onChange={e => update('issueTitle', e.target.value)} placeholder="What should be tested?" /></Field>
             <Field label="Issue details" required wide hint={`${form.issueDetails.length}/600`}><textarea className={errors.issueDetails ? 'error' : ''} maxLength="600" rows="4" value={form.issueDetails} onChange={e => update('issueDetails', e.target.value)} placeholder="Describe the feature, expected behavior, rules, and constraints..." /></Field>
+            <Field label="Issue screenshot" wide hint="Optional · PNG, JPEG, or WebP · max 2 MB"><input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleIssueImageUpload} /></Field>
+            {issueImage && <div className="issue-image-preview"><img src={issueImage.dataUrl} alt="Attached issue screenshot preview" /><div><strong>{issueImage.name}</strong><small>Screenshot is used only for AI-enhanced generation and is not saved with the test suite.</small><button type="button" onClick={() => setIssueImage(null)}>Remove screenshot</button></div></div>}
             <Field label="Precondition" wide hint="Optional"><textarea rows="2" value={form.precondition} onChange={e => update('precondition', e.target.value)} placeholder="What must already be true before testing begins?" /></Field>
             <Field label="Test steps" required wide hint="One step per line"><textarea className={errors.testSteps ? 'error' : ''} rows="6" value={form.testSteps} onChange={e => update('testSteps', e.target.value)} placeholder={'Open the sign-in page\nEnter a registered email\nSelect Continue'} /></Field>
           </div>
@@ -956,7 +988,7 @@ export default function App() {
           </div>
 
           <div className="form-actions">
-            <button className="clear" onClick={() => { setForm(blankForm); setCases([]); setErrors({}); setAccessCode(''); setActiveSuiteId(''); setEditingCaseId(''); setNotice('Draft cleared'); setTimeout(() => setNotice(''), 1600) }}>{icons.trash}<span>Clear</span></button>
+            <button className="clear" onClick={() => { setForm(blankForm); setIssueImage(null); setCases([]); setErrors({}); setAccessCode(''); setActiveSuiteId(''); setEditingCaseId(''); setNotice('Draft cleared'); setTimeout(() => setNotice(''), 1600) }}>{icons.trash}<span>Clear</span></button>
             <button className="example" onClick={() => { setForm(example); setErrors({}) }}>Use example</button>
             {cases.length > 0 && <button className="save-suite" onClick={saveSuite}>{icons.file}<span>{activeSuiteId ? 'Update saved suite' : 'Save suite'}</span></button>}
             <button className="generate" onClick={generate} disabled={generating}>{generating ? <span className="spinner"/> : icons.wand}<span>{generating ? 'Analyzing real-world scenarios…' : aiEnabled ? 'Generate with AI' : 'Generate test cases'}</span></button>
