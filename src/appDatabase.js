@@ -1,6 +1,6 @@
 export const DB_NAME = 'casecraft-db'
-export const DB_VERSION = 2
-export const STORE_NAMES = ['users', 'session', 'suites', 'draft']
+export const DB_VERSION = 3
+export const STORE_NAMES = ['users', 'session', 'suites', 'draft', 'projects', 'releases', 'requirementDocuments', 'requirementVersions', 'reviews', 'audit']
 export const LOCAL_KEYS = {
   users: 'casecraft-users',
   session: 'casecraft-session',

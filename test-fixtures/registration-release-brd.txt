@@ -1,0 +1,6 @@
+Registration Release BRD v1.0
+
+BRD-REG-001 A visitor can create an account by entering a unique valid email address and a password containing at least eight characters.
+BRD-REG-002 The system shall reject a registration attempt that uses an email address already registered to another account.
+BRD-REG-003 After successful registration, the system must send a verification email and show a confirmation message.
+BRD-REG-004 Only a verified account can sign in to the customer portal.

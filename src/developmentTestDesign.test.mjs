@@ -21,7 +21,7 @@ const feature = {
 test('development blank form contains the complete feature-design inputs', () => {
   assert.deepEqual(Object.keys(developmentBlankForm), [
     'featureName', 'module', 'description', 'userRoles', 'userFlow',
-    'expectedBehavior', 'acceptanceCriteria', 'dependencies', 'edgeCases',
+    'expectedBehavior', 'acceptanceCriteria', 'dependencies', 'edgeCases', 'projectName', 'releaseName',
     'priority', 'coverage',
   ])
 })

@@ -1,3 +1,5 @@
+import { normalizeCaseGovernance } from './qualityGovernance.js'
+
 const fallbackTitle = 'Untitled test suite'
 
 export function cleanStepText(step) {
@@ -11,7 +13,7 @@ export function stepsFromText(text) {
 export function createSuiteSnapshot({ form, cases, source = 'standard', existingId, ownerId, workspace = 'maintenance' } = {}) {
   const now = new Date().toISOString()
   const safeForm = { ...(form || {}) }
-  const safeCases = Array.isArray(cases) ? cases.map(item => ({ ...item, steps: [...(item.steps || [])] })) : []
+  const safeCases = Array.isArray(cases) ? cases.map(item => normalizeCaseGovernance({ ...item, steps: [...(item.steps || [])] })) : []
   const development = workspace === 'development'
 
   return {
@@ -21,6 +23,7 @@ export function createSuiteSnapshot({ form, cases, source = 'standard', existing
     subModule: String(development ? '' : safeForm.subModule || '').trim(),
     caseCount: safeCases.length,
     source,
+    reviewStatus: 'Draft',
     ...(workspace === 'development' ? { workspace } : {}),
     ...(ownerId ? { ownerId } : {}),
     form: safeForm,

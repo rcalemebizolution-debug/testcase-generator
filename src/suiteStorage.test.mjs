@@ -34,8 +34,18 @@ test('createSuiteSnapshot stores editable cases with metadata', () => {
   assert.equal(saved.title, 'User can sign in')
   assert.equal(saved.module, 'Authentication')
   assert.equal(saved.caseCount, 1)
-  assert.deepEqual(saved.cases, baseCases)
+  assert.equal(saved.cases[0].id, baseCases[0].id)
+  assert.deepEqual(saved.cases[0].steps, baseCases[0].steps)
   assert.ok(saved.updatedAt)
+})
+
+test('suite snapshots initialize review and execution fields for manual QA', () => {
+  const saved = createSuiteSnapshot({ form: baseForm, cases: baseCases, existingId: 'suite-qa' })
+
+  assert.equal(saved.reviewStatus, 'Draft')
+  assert.equal(saved.cases[0].reviewStatus, 'Draft')
+  assert.equal(saved.cases[0].executionStatus, 'Not Run')
+  assert.equal(saved.cases[0].actualResult, '')
 })
 
 test('private suites are visible only to their creator', () => {

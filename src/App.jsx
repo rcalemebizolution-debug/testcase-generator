@@ -7,6 +7,7 @@ import { isEffectiveAdmin, loginUser, registerUser, setUserRole, setUserStatus, 
 import { loadAppData, saveDraftToDatabase, saveSessionToDatabase, saveSuitesToDatabase, saveUsersToDatabase } from './appDatabase.js'
 import { supabaseEnabled } from './supabaseClient.js'
 import { deleteSupabaseUser, loginSupabaseUser, logoutSupabaseUser, registerSupabaseUser, setSupabaseUserRole, setSupabaseUserStatus, updateSupabaseProfile } from './supabaseAuth.js'
+import { buildReleaseReadiness, validateGeneratedCases } from './qualityGovernance.js'
 
 const icons = {
   spark: <svg viewBox="0 0 24 24"><path d="m12 3 .8 4.2a5 5 0 0 0 4 4l4.2.8-4.2.8a5 5 0 0 0-4 4L12 21l-.8-4.2a5 5 0 0 0-4-4L3 12l4.2-.8a5 5 0 0 0 4-4L12 3Z"/></svg>,
@@ -131,15 +132,21 @@ function TestCase({ item, open, onToggle, editing, onEditToggle, onFieldChange, 
         <Field label="Title" wide><input value={item.title} onChange={e => onFieldChange('title', e.target.value)} /></Field>
         <Field label="Type"><select value={item.type} onChange={e => onFieldChange('type', e.target.value)}><option>Positive</option><option>Negative</option><option>Validation</option><option>Boundary</option><option>Security</option><option>Usability</option><option>Resilience</option><option>Integration</option></select></Field>
         <Field label="Priority"><select value={item.priority} onChange={e => onFieldChange('priority', e.target.value)}><option>Low</option><option>Medium</option><option>High</option><option>Critical</option></select></Field>
+        <Field label="QA review"><select value={item.reviewStatus || 'Draft'} onChange={e => onFieldChange('reviewStatus', e.target.value)}><option>Draft</option><option>Reviewed</option><option>Approved</option></select></Field>
+        <Field label="Execution status"><select value={item.executionStatus || 'Not Run'} onChange={e => onFieldChange('executionStatus', e.target.value)}><option>Not Run</option><option>Passed</option><option>Failed</option><option>Blocked</option><option>Skipped</option></select></Field>
         <Field label="Description" wide><textarea rows="3" value={item.description} onChange={e => onFieldChange('description', e.target.value)} /></Field>
         <Field label="Precondition" wide><textarea rows="2" value={item.precondition} onChange={e => onFieldChange('precondition', e.target.value)} /></Field>
         <Field label="Steps" wide hint="One step per line"><textarea rows="5" value={item.steps.join('\n')} onChange={e => onStepsChange(e.target.value)} /></Field>
         <Field label="Expected result" wide><textarea rows="3" value={item.expected} onChange={e => onFieldChange('expected', e.target.value)} /></Field>
+        <Field label="Actual result" wide><textarea rows="2" value={item.actualResult || ''} onChange={e => onFieldChange('actualResult', e.target.value)} /></Field>
+        <Field label="Bug / ticket link"><input value={item.bugLink || ''} onChange={e => onFieldChange('bugLink', e.target.value)} placeholder="e.g. JIRA-123" /></Field>
+        <Field label="Tester"><input value={item.tester || ''} onChange={e => onFieldChange('tester', e.target.value)} /></Field>
       </div> : <>
         <section><h4>Description</h4><p>{item.description}</p></section>
         <section><h4>Precondition</h4><p>{item.precondition}</p></section>
         <section><h4>Test steps</h4><ol>{item.steps.map((step, i) => <li key={i}><span>{i + 1}</span><p>{step}</p></li>)}</ol></section>
         <section className="expected"><h4>Expected result</h4><p><i>{icons.check}</i>{item.expected}</p></section>
+        <section><h4>QA status</h4><p>{item.reviewStatus || 'Draft'} review · {item.executionStatus || 'Not Run'} execution{item.bugLink ? ` · ${item.bugLink}` : ''}</p></section>
       </>}
     </div>}
   </article>
@@ -276,7 +283,8 @@ function DevelopmentWorkspace({ user, onSwitch, onLogout, suites, savedSuites, o
 
   const activeRequirementDocument = requirementDocuments.find(document => document.id === activeDocumentId)
   const approvedRequirements = activeRequirementDocument?.requirements.filter(requirement => requirement.approved) || []
-  const requirementCoverage = useMemo(() => buildRequirementCoverage(requirementDocuments.flatMap(document => document.requirements.filter(requirement => requirement.approved)), suites), [requirementDocuments, suites])
+  const releaseReadiness = useMemo(() => buildReleaseReadiness(requirementDocuments.flatMap(document => document.requirements.filter(requirement => requirement.approved)), suites), [requirementDocuments, suites])
+  const requirementCoverage = releaseReadiness.items
 
   useEffect(() => {
     if (!activeRequirementDocument || approvedRequirements.length === 0) return
@@ -356,6 +364,11 @@ function DevelopmentWorkspace({ user, onSwitch, onLogout, suites, savedSuites, o
       setNotice('Generate test cases before saving the suite.')
       return
     }
+    const validation = validateGeneratedCases(cases)
+    if (!validation.ok) {
+      setNotice(validation.errors[0])
+      return
+    }
     const snapshot = createSuiteSnapshot({ form, cases, source: caseSource, existingId: activeSuiteId, ownerId: user.id, workspace: 'development' })
     const nextSuites = await persistSavedSuite({ savedSuites, snapshot, save: saveSuitesToDatabase })
     onSuitesChange(nextSuites)
@@ -400,7 +413,7 @@ function DevelopmentWorkspace({ user, onSwitch, onLogout, suites, savedSuites, o
       {notice && <div className="toast">{icons.check}{notice}</div>}
       {activeView === 'suites' ? <SavedSuitesPanel suites={suites} activeSuiteId={activeSuiteId} onLoad={loadDevelopmentSuite} onDelete={onDelete} onBack={() => setActiveView('generator')} />
         : activeView === 'requirements' ? <RequirementsPanel user={user} documents={requirementDocuments} onChange={setRequirementDocuments} activeDocumentId={activeDocumentId} onSelectDocument={setActiveDocumentId} />
-        : activeView === 'coverage' ? <RequirementCoveragePanel coverage={requirementCoverage} documents={requirementDocuments} onBack={() => setActiveView('generator')} />
+        : activeView === 'coverage' ? <RequirementCoveragePanel coverage={requirementCoverage} readiness={releaseReadiness} documents={requirementDocuments} onBack={() => setActiveView('generator')} />
         : <div className="development-layout">
       <section className="development-form-panel">
         <div className="development-heading"><span>Feature-based manual design</span><h1>Development test designer</h1><p>Describe a new feature and create structured manual test coverage before release.</p></div>
@@ -424,6 +437,8 @@ function DevelopmentWorkspace({ user, onSwitch, onLogout, suites, savedSuites, o
           <details className="development-optional-context">
             <summary><span><strong>Additional generation context</strong><small>Use these fields only when the selected requirements need more detail.</small></span><b>Optional</b></summary>
             <div className="development-form-grid">
+              <Field label="Project"><input value={form.projectName} onChange={event => update('projectName', event.target.value)} placeholder="e.g. Customer portal" /></Field>
+              <Field label="Release"><input value={form.releaseName} onChange={event => update('releaseName', event.target.value)} placeholder="e.g. v2.4 Password recovery" /></Field>
               <Field label="User roles" hint="One role per line"><textarea rows="3" value={form.userRoles} onChange={event => update('userRoles', event.target.value)} placeholder={'Workspace owner\nInvited teammate'} /></Field>
               <Field label="Primary user flow" hint="One step per line"><textarea rows="5" value={form.userFlow} onChange={event => update('userFlow', event.target.value)} placeholder={'Open the feature\nComplete the main action\nConfirm the result'} /></Field>
               <Field label="Expected behavior" wide><textarea rows="3" value={form.expectedBehavior} onChange={event => update('expectedBehavior', event.target.value)} placeholder="What should happen when the feature succeeds?" /></Field>
@@ -513,11 +528,12 @@ function RequirementsPanel({ user, documents, onChange, activeDocumentId, onSele
   </section>
 }
 
-function RequirementCoveragePanel({ coverage, documents, onBack }) {
-  const covered = coverage.filter(item => item.status === 'Covered').length
+function RequirementCoveragePanel({ coverage, readiness, documents, onBack }) {
+  const covered = coverage.filter(item => item.status !== 'Uncovered').length
   return <section className="coverage-page">
     <div className="coverage-heading"><div><span>Traceability matrix</span><h2>Requirement coverage</h2><p>Coverage is calculated from approved requirements referenced by saved Development test cases.</p></div><button onClick={onBack}>Back to generator</button></div>
-    <div className="coverage-stats"><article><strong>{documents.length}</strong><span>Documents</span></article><article><strong>{coverage.length}</strong><span>Approved requirements</span></article><article><strong>{covered}</strong><span>Covered</span></article><article className="uncovered"><strong>{coverage.length - covered}</strong><span>Uncovered</span></article></div>
+    <div className="coverage-stats"><article><strong>{documents.length}</strong><span>Documents</span></article><article><strong>{coverage.length}</strong><span>Approved requirements</span></article><article><strong>{covered}</strong><span>With test evidence</span></article><article className="uncovered"><strong>{readiness.summary.atRisk + readiness.summary.uncovered}</strong><span>At risk / uncovered</span></article></div>
+    {coverage.length > 0 && <div className={readiness.ready ? 'release-readiness ready' : 'release-readiness'}><strong>{readiness.ready ? 'Ready for release' : 'Not ready for release'}</strong><span>{readiness.ready ? 'Every approved requirement has passed test evidence.' : `${readiness.summary.uncovered} uncovered and ${readiness.summary.atRisk} at-risk requirement${readiness.summary.uncovered + readiness.summary.atRisk === 1 ? '' : 's'} need attention.`}</span></div>}
     {coverage.length === 0 ? <div className="coverage-empty"><h3>No approved requirements yet</h3><p>Upload a BRD, approve its requirements, select them during generation, and save the resulting suite.</p></div> : <div className="coverage-table"><div className="coverage-row heading"><span>Requirement</span><span>Requirement text</span><span>Test cases</span><span>Status</span></div>{coverage.map(item => <div className="coverage-row" key={item.id}><strong>{item.id}</strong><p>{item.text}</p><div>{item.caseIds.length ? item.caseIds.map(caseId => <span key={caseId}>{caseId}</span>) : '—'}</div><b className={item.status.toLowerCase()}>{item.status}</b></div>)}</div>}
   </section>
 }
@@ -778,6 +794,12 @@ export default function App() {
   const saveSuite = async () => {
     if (!cases.length) {
       setNotice('Generate cases before saving a suite.')
+      setTimeout(() => setNotice(''), 2200)
+      return
+    }
+    const validation = validateGeneratedCases(cases)
+    if (!validation.ok) {
+      setNotice(validation.errors[0])
       setTimeout(() => setNotice(''), 2200)
       return
     }

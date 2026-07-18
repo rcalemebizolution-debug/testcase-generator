@@ -8,6 +8,8 @@ export const developmentBlankForm = {
   acceptanceCriteria: '',
   dependencies: '',
   edgeCases: '',
+  projectName: '',
+  releaseName: '',
   priority: 'Medium',
   coverage: 'Balanced',
 }
