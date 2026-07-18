@@ -4,8 +4,8 @@ import { createGroqResponseFormat } from './groqResponseFormat.js'
 
 const schema = { type: 'object' }
 
-test('vision uses JSON mode instead of unsupported JSON Schema', () => {
-  assert.deepEqual(createGroqResponseFormat(schema, true), { type: 'json_object' })
+test('vision omits response formatting so image-capable models are not constrained by unsupported structured output modes', () => {
+  assert.equal(createGroqResponseFormat(schema, true), undefined)
 })
 
 test('text generation retains strict JSON Schema output', () => {

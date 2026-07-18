@@ -1,5 +1,5 @@
 export function createGroqResponseFormat(schema, usesVision) {
-  if (usesVision) return { type: 'json_object' }
+  if (usesVision) return undefined
 
   return {
     type: 'json_schema',
