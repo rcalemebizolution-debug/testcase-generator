@@ -1,5 +1,6 @@
 import { timingSafeEqual } from 'node:crypto'
 import { createVisionUserContent, validateIssueImage } from '../src/issueImage.js'
+import { createGroqResponseFormat } from '../src/groqResponseFormat.js'
 
 const RATE_WINDOW_MS = 60_000
 const RATE_LIMIT = 8
@@ -126,7 +127,10 @@ export default async function handler(req, res) {
     const contextInstruction = isDevelopment
       ? 'Design tests for a new feature before release. Use the supplied feature name, description, roles, flow, expected behavior, acceptance criteria, dependencies, and edge cases. Use the supplied module when present.'
       : 'Design tests for a maintenance issue. Use the supplied module and sub-module exactly and connect each scenario to the issue title and details.'
-    const systemPrompt = `You are a senior QA engineer creating practical, real-world manual test cases. ${contextInstruction} Return exactly ${desiredCount} distinct cases. The type field must be exactly one of: ${CASE_TYPES.join(', ')}. The priority field must be exactly one of: ${PRIORITIES.join(', ')}. Cover realistic user behavior and the most relevant mix of happy path, invalid data, permissions, boundary values, interrupted workflows, integration failures, security, concurrency, session state, and recovery. Only include categories that genuinely apply. Make every step executable and every expected result observable and specific. Do not invent product requirements as facts; when an assumption is necessary, state it clearly in the description. Keep descriptions concise. Assign sequential IDs starting with TC-001.`
+    const outputInstruction = imageResult.image
+      ? 'Return valid JSON only, as an object with a cases array. Each case must include id, title, type, priority, description, preconditions, steps, expectedResult, and testData.'
+      : ''
+    const systemPrompt = `You are a senior QA engineer creating practical, real-world manual test cases. ${contextInstruction} Return exactly ${desiredCount} distinct cases. The type field must be exactly one of: ${CASE_TYPES.join(', ')}. The priority field must be exactly one of: ${PRIORITIES.join(', ')}. Cover realistic user behavior and the most relevant mix of happy path, invalid data, permissions, boundary values, interrupted workflows, integration failures, security, concurrency, session state, and recovery. Only include categories that genuinely apply. Make every step executable and every expected result observable and specific. Do not invent product requirements as facts; when an assumption is necessary, state it clearly in the description. Keep descriptions concise. Assign sequential IDs starting with TC-001. ${outputInstruction}`
 
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -140,14 +144,7 @@ export default async function handler(req, res) {
           { role: 'system', content: systemPrompt },
           { role: 'user', content: createVisionUserContent(`Create a test suite from this ${isDevelopment ? 'feature' : 'issue'} context:\n${JSON.stringify(safeInput, null, 2)}${imageResult.image ? '\n\nInspect the attached screenshot as issue evidence. Derive test scenarios from only visible UI behavior and clearly mark any uncertain interpretation as an assumption.' : ''}`, imageResult.image) },
         ],
-        response_format: {
-          type: 'json_schema',
-          json_schema: {
-            name: 'test_case_suite',
-            strict: true,
-            schema: testCaseSchema,
-          },
-        },
+        response_format: createGroqResponseFormat(testCaseSchema, Boolean(imageResult.image)),
       }),
     })
 
