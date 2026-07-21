@@ -53,14 +53,21 @@ function cleanStep(step) {
   return step.replace(/^\s*(?:\d+[.)]|[-*•])\s*/, '').trim()
 }
 
+function shortExpectedRequirement(value) {
+  const text = String(value || '').trim()
+  const firstSentence = text.match(/^(.+?[.!?])(?:\s|$)/)?.[1] || text
+  const words = firstSentence.split(/\s+/).filter(Boolean)
+  return words.length > 30 ? `${words.slice(0, 30).join(' ')}…` : firstSentence
+}
+
 function generateCases(data) {
   const rawSteps = data.testSteps.split('\n').map(cleanStep).filter(Boolean)
   const steps = rawSteps.length ? rawSteps : ['Open the relevant feature', 'Perform the action described in the issue', 'Observe the result']
   const title = data.issueTitle.trim() || 'Verify requested functionality'
   const base = data.precondition.trim() || 'User has access to the application.'
-  const requirement = data.issueDetails.trim()
+  const requirement = shortExpectedRequirement(data.issueDetails)
   const expected = requirement
-    ? `The completed workflow satisfies this issue requirement: ${requirement}`
+    ? `Expected: ${requirement}`
     : `The ${title.toLowerCase()} workflow completes successfully with the expected result.`
   const issueContext = data.issueDetails.trim() || title
   const describe = purpose => `${purpose} for "${title}" based on the reported issue: ${issueContext}`
@@ -83,7 +90,7 @@ function generateCases(data) {
       precondition: base,
       steps: [...steps.slice(0, Math.max(1, steps.length - 1)), 'Provide missing, malformed, or invalid input', 'Submit the request'],
       expected: requirement
-        ? `The request is not completed, no invalid data is saved, and this issue requirement cannot be bypassed: ${requirement}`
+        ? `Invalid input is rejected and cannot bypass: ${requirement}`
         : 'The request is not completed. A clear, actionable validation message is shown and no invalid data is saved.',
     })
     cases.push({
@@ -92,7 +99,7 @@ function generateCases(data) {
       precondition: base,
       steps: [steps[0], 'Leave all required fields empty', 'Attempt to continue or submit'],
       expected: requirement
-        ? `Required fields are identified, the user remains on the current screen, and this issue requirement cannot be bypassed: ${requirement}`
+        ? `Required fields are identified and cannot bypass: ${requirement}`
         : 'Required fields are identified consistently, focus moves to the first error, and the user remains on the current screen.',
     })
   }
@@ -104,7 +111,7 @@ function generateCases(data) {
       precondition: base,
       steps: [...steps.slice(0, 1), 'Enter minimum and maximum accepted values', 'Repeat with values just outside the accepted limits'],
       expected: requirement
-        ? `Values at valid boundaries are accepted, invalid values are rejected, and this issue requirement remains enforced: ${requirement}`
+        ? `Valid boundaries are accepted; invalid values cannot bypass: ${requirement}`
         : 'Values at valid boundaries are accepted; values beyond the limits are rejected with a precise validation message.',
     }, {
       id: 'TC-005', type: 'Resilience', priority: 'Low', title: `${title} — repeated submission`, ...caseContext,
@@ -112,7 +119,7 @@ function generateCases(data) {
       precondition: base,
       steps: [...steps, 'Immediately repeat the final action'],
       expected: requirement
-        ? `Repeating the action does not create duplicate or inconsistent data and continues to satisfy this issue requirement: ${requirement}`
+        ? `Repeating the action creates no duplicate data and still meets: ${requirement}`
         : 'The application handles the repeated action safely without duplicate records, inconsistent state, or unexpected errors.',
     })
   }

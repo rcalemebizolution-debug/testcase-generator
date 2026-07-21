@@ -62,6 +62,13 @@ function normalizeLabel(value, allowed, fallback) {
   return allowed.find(label => label.toLowerCase() === normalized) || fallback
 }
 
+function conciseRequirement(value, maxWords = 30) {
+  const text = String(value || '').trim()
+  const firstSentence = text.match(/^(.+?[.!?])(?:\s|$)/)?.[1] || text
+  const words = firstSentence.split(/\s+/).filter(Boolean)
+  return words.length > maxWords ? `${words.slice(0, maxWords).join(' ')}…` : firstSentence
+}
+
 function normalizeCase(testCase, index, input) {
   const featureTitle = input.workspace === 'development' ? input.featureName : input.issueTitle
   const title = String(testCase.title || '').trim() || featureTitle
@@ -74,8 +81,9 @@ function normalizeCase(testCase, index, input) {
   const generatedExpected = String(testCase.expected || '').trim()
   const preventsBypass = ['Negative', 'Validation', 'Boundary', 'Security'].includes(normalizeLabel(testCase.type, CASE_TYPES, 'Positive'))
   const requirementExpected = issueRequirement
-    ? `${preventsBypass ? 'The issue requirement remains enforced: ' : 'The completed workflow satisfies this issue requirement: '}${issueRequirement}`
+    ? `${preventsBypass ? 'The stated rule cannot be bypassed: ' : 'Expected: '}${conciseRequirement(issueRequirement)}`
     : 'The result is observable and matches the stated issue requirements.'
+  const isGenericExpected = /^(the result|the workflow|the system|expected behavior).*(requirements|expected result)/i.test(generatedExpected)
 
   return {
     id: `TC-${String(index + 1).padStart(3, '0')}`,
@@ -89,7 +97,7 @@ function normalizeCase(testCase, index, input) {
       : `Verifies "${input.issueTitle}" based on the reported issue: ${input.issueDetails}`),
     precondition: String(testCase.precondition || input.precondition || 'User has access to the application.').trim(),
     steps: steps.length >= 2 ? steps : ['Open the relevant feature', 'Perform the test action', 'Observe the result'],
-    expected: generatedExpected ? `${generatedExpected} ${requirementExpected}` : requirementExpected,
+    expected: generatedExpected && !isGenericExpected ? generatedExpected : requirementExpected,
   }
 }
 
@@ -144,7 +152,7 @@ Return exactly ${desiredCount} distinct cases. The type field must be exactly on
 
 Cover the relevant mix of happy path, validation, permissions, boundary values, state transitions, retries/duplicates, interrupted workflows, integration failures, security, concurrency, session state, and recovery. Include a category only when the supplied issue makes it relevant. Do not invent requirements, limits, roles, messages, or integrations. If a necessary detail is uncertain, state it as an assumption in the description.
 
-For every case: make the title specific to the risk; state a realistic precondition with required role/data/state; write atomic, executable steps with concrete test data when the issue provides it; and make the expected result observable. Every expected result must directly restate the relevant outcome, rule, timing, restriction, or acceptance criterion from the supplied issue description—never write generic text such as "the result matches the requirements." For negative, validation, boundary, and security cases, state exactly how the issue rule remains enforced and what must not be persisted, changed, or exposed. Ensure cases do not overlap and each has a unique decision or risk focus. Keep wording concise. Assign sequential IDs starting with TC-001. ${outputInstruction}`
+For every case: make the title specific to the risk; state a realistic precondition with required role/data/state; write atomic, executable steps with concrete test data when the issue provides it; and make the expected result observable. Each expected result must be one plain, concise sentence of no more than 35 words, focused only on that scenario's outcome. It must directly name the relevant outcome, rule, timing, restriction, or acceptance criterion from the issue description—never write generic text such as "the result matches the requirements." For negative, validation, boundary, and security cases, state exactly how the issue rule remains enforced and what must not be persisted, changed, or exposed. Across the complete suite, cover every relevant scenario and risk stated in the issue; do not try to combine every scenario into one expected result. Ensure cases do not overlap and each has a unique decision or risk focus. Keep wording concise. Assign sequential IDs starting with TC-001. ${outputInstruction}`
 
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',

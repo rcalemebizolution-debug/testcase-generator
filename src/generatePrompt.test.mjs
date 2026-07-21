@@ -10,4 +10,6 @@ test('AI prompt requires QA-lead risk-based test design', () => {
   assert.match(source, /Assign Critical or High only when failure could block a core user journey/)
   assert.match(source, /Do not invent requirements, limits, roles, messages, or integrations/)
   assert.match(source, /make the expected result observable/)
+  assert.match(source, /one plain, concise sentence of no more than 35 words/)
+  assert.match(source, /cover every relevant scenario and risk stated in the issue/)
 })
