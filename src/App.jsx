@@ -58,8 +58,9 @@ function generateCases(data) {
   const steps = rawSteps.length ? rawSteps : ['Open the relevant feature', 'Perform the action described in the issue', 'Observe the result']
   const title = data.issueTitle.trim() || 'Verify requested functionality'
   const base = data.precondition.trim() || 'User has access to the application.'
-  const expected = data.issueDetails.trim()
-    ? `The workflow completes successfully and behaves as specified: ${data.issueDetails.trim()}`
+  const requirement = data.issueDetails.trim()
+  const expected = requirement
+    ? `The completed workflow satisfies this issue requirement: ${requirement}`
     : `The ${title.toLowerCase()} workflow completes successfully with the expected result.`
   const issueContext = data.issueDetails.trim() || title
   const describe = purpose => `${purpose} for "${title}" based on the reported issue: ${issueContext}`
@@ -81,14 +82,18 @@ function generateCases(data) {
       description: describe('Verifies that missing, malformed, or invalid input is rejected safely'),
       precondition: base,
       steps: [...steps.slice(0, Math.max(1, steps.length - 1)), 'Provide missing, malformed, or invalid input', 'Submit the request'],
-      expected: 'The request is not completed. A clear, actionable validation message is shown and no invalid data is saved.',
+      expected: requirement
+        ? `The request is not completed, no invalid data is saved, and this issue requirement cannot be bypassed: ${requirement}`
+        : 'The request is not completed. A clear, actionable validation message is shown and no invalid data is saved.',
     })
     cases.push({
       id: 'TC-003', type: 'Validation', priority: 'Medium', title: `${title} — required-field validation`, ...caseContext,
       description: describe('Verifies that required-field rules provide clear and consistent feedback'),
       precondition: base,
       steps: [steps[0], 'Leave all required fields empty', 'Attempt to continue or submit'],
-      expected: 'Required fields are identified consistently, focus moves to the first error, and the user remains on the current screen.',
+      expected: requirement
+        ? `Required fields are identified, the user remains on the current screen, and this issue requirement cannot be bypassed: ${requirement}`
+        : 'Required fields are identified consistently, focus moves to the first error, and the user remains on the current screen.',
     })
   }
 
@@ -98,13 +103,17 @@ function generateCases(data) {
       description: describe('Verifies behavior at and immediately beyond the supported input limits'),
       precondition: base,
       steps: [...steps.slice(0, 1), 'Enter minimum and maximum accepted values', 'Repeat with values just outside the accepted limits'],
-      expected: 'Values at valid boundaries are accepted; values beyond the limits are rejected with a precise validation message.',
+      expected: requirement
+        ? `Values at valid boundaries are accepted, invalid values are rejected, and this issue requirement remains enforced: ${requirement}`
+        : 'Values at valid boundaries are accepted; values beyond the limits are rejected with a precise validation message.',
     }, {
       id: 'TC-005', type: 'Resilience', priority: 'Low', title: `${title} — repeated submission`, ...caseContext,
       description: describe('Verifies that repeating the final action does not create duplicate or inconsistent results'),
       precondition: base,
       steps: [...steps, 'Immediately repeat the final action'],
-      expected: 'The application handles the repeated action safely without duplicate records, inconsistent state, or unexpected errors.',
+      expected: requirement
+        ? `Repeating the action does not create duplicate or inconsistent data and continues to satisfy this issue requirement: ${requirement}`
+        : 'The application handles the repeated action safely without duplicate records, inconsistent state, or unexpected errors.',
     })
   }
   return cases

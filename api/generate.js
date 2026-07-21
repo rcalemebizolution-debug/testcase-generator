@@ -70,6 +70,12 @@ function normalizeCase(testCase, index, input) {
   const steps = Array.isArray(testCase.steps)
     ? testCase.steps.map(step => String(step || '').trim()).filter(Boolean)
     : []
+  const issueRequirement = String(input.workspace === 'development' ? input.description : input.issueDetails || '').trim()
+  const generatedExpected = String(testCase.expected || '').trim()
+  const preventsBypass = ['Negative', 'Validation', 'Boundary', 'Security'].includes(normalizeLabel(testCase.type, CASE_TYPES, 'Positive'))
+  const requirementExpected = issueRequirement
+    ? `${preventsBypass ? 'The issue requirement remains enforced: ' : 'The completed workflow satisfies this issue requirement: '}${issueRequirement}`
+    : 'The result is observable and matches the stated issue requirements.'
 
   return {
     id: `TC-${String(index + 1).padStart(3, '0')}`,
@@ -83,7 +89,7 @@ function normalizeCase(testCase, index, input) {
       : `Verifies "${input.issueTitle}" based on the reported issue: ${input.issueDetails}`),
     precondition: String(testCase.precondition || input.precondition || 'User has access to the application.').trim(),
     steps: steps.length >= 2 ? steps : ['Open the relevant feature', 'Perform the test action', 'Observe the result'],
-    expected: String(testCase.expected || 'The result is observable and matches the issue requirements.').trim(),
+    expected: generatedExpected ? `${generatedExpected} ${requirementExpected}` : requirementExpected,
   }
 }
 
@@ -128,9 +134,9 @@ export default async function handler(req, res) {
       ? 'Design tests for a new feature before release. Use the supplied feature name, description, roles, flow, expected behavior, acceptance criteria, dependencies, and edge cases. Use the supplied module when present.'
       : 'Design tests for a maintenance issue. Use the supplied module and sub-module exactly and connect each scenario to the issue title and details.'
     const outputInstruction = imageResult.image
-      ? 'Return valid JSON only, as an object with a cases array. Each case must include id, title, type, priority, description, preconditions, steps, expectedResult, and testData.'
+      ? 'Return valid JSON only, as an object with a cases array. Each case must include id, title, type, priority, description, precondition, steps, and expected.'
       : ''
-    const systemPrompt = `You are a senior QA engineer creating practical, real-world manual test cases. ${contextInstruction} Return exactly ${desiredCount} distinct cases. The type field must be exactly one of: ${CASE_TYPES.join(', ')}. The priority field must be exactly one of: ${PRIORITIES.join(', ')}. Cover realistic user behavior and the most relevant mix of happy path, invalid data, permissions, boundary values, interrupted workflows, integration failures, security, concurrency, session state, and recovery. Only include categories that genuinely apply. Make every step executable and every expected result observable and specific. Do not invent product requirements as facts; when an assumption is necessary, state it clearly in the description. Keep descriptions concise. Assign sequential IDs starting with TC-001. ${outputInstruction}`
+    const systemPrompt = `You are a senior QA engineer creating practical, real-world manual test cases. ${contextInstruction} Return exactly ${desiredCount} distinct cases. The type field must be exactly one of: ${CASE_TYPES.join(', ')}. The priority field must be exactly one of: ${PRIORITIES.join(', ')}. Cover realistic user behavior and the most relevant mix of happy path, invalid data, permissions, boundary values, interrupted workflows, integration failures, security, concurrency, session state, and recovery. Only include categories that genuinely apply. Make every step executable and every expected result observable and specific. Every expected result must directly restate the relevant outcome, rule, timing, restriction, or acceptance criterion from the supplied issue description; never use generic text such as "the result matches the requirements." For negative, validation, boundary, and security cases, specify that the stated issue rule cannot be bypassed. Do not invent product requirements as facts; when an assumption is necessary, state it clearly in the description. Keep descriptions concise. Assign sequential IDs starting with TC-001. ${outputInstruction}`
 
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',

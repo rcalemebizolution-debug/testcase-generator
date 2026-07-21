@@ -134,3 +134,9 @@ test('Maintenance lets testers attach an image, video, or file as issue evidence
   assert.match(source, /onChange=\{handleIssueMediaUpload\}/)
   assert.match(source, /preview frame from this video is used for AI-enhanced generation/)
 })
+
+test('standard expected results use the issue description instead of a generic requirement message', () => {
+  const standardGenerator = source.slice(source.indexOf('function generateCases'), source.indexOf('function Field'))
+  assert.match(standardGenerator, /The completed workflow satisfies this issue requirement/)
+  assert.match(standardGenerator, /this issue requirement cannot be bypassed/)
+})
