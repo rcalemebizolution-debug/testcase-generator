@@ -6,7 +6,7 @@ import { assignUnownedSuites, createSuiteSnapshot, getSuitesForUser, getSuitesFo
 import { isEffectiveAdmin, loginUser, registerUser, setUserRole, setUserStatus, updateUserProfile } from './authStorage.js'
 import { loadAppData, saveDraftToDatabase, saveSessionToDatabase, saveSuitesToDatabase, saveUsersToDatabase } from './appDatabase.js'
 import { supabaseEnabled } from './supabaseClient.js'
-import { deleteSupabaseUser, loginSupabaseUser, logoutSupabaseUser, registerSupabaseUser, setSupabaseUserRole, setSupabaseUserStatus, updateSupabaseProfile } from './supabaseAuth.js'
+import { deleteSupabaseUser, loadSupabaseWorkspace, loginSupabaseUser, logoutSupabaseUser, registerSupabaseUser, setSupabaseUserRole, setSupabaseUserStatus, updateSupabaseProfile } from './supabaseAuth.js'
 import { buildReleaseReadiness, validateGeneratedCases } from './qualityGovernance.js'
 import { validateIssueImage } from './issueImage.js'
 
@@ -647,10 +647,11 @@ export default function App() {
         if (!active) return
         setForm({ ...blankForm, ...(data.draft || {}) })
         let nextUsers = data.users || []
-        const nextSession = null
+        let nextSession = data.session || null
         if (supabaseEnabled) {
-          await logoutSupabaseUser()
-          nextUsers = []
+          const supabaseWorkspace = await loadSupabaseWorkspace()
+          nextUsers = supabaseWorkspace?.users || []
+          nextSession = supabaseWorkspace?.session || null
         }
         setSavedSuites(assignUnownedSuites(data.suites || [], nextSession?.id))
         setUsers(nextUsers)

@@ -29,10 +29,11 @@ test('the unauthenticated landing page defaults to login', () => {
   assert.doesNotMatch(source, /nextSession \|\| nextUsers\?\.length \? 'login' : 'register'/)
 })
 
-test('opening the app starts logged out even when a prior session exists', () => {
+test('opening the app restores the existing session instead of logging the user out', () => {
   const startupBody = source.slice(source.indexOf('useEffect(() => {'), source.indexOf('const completed'))
-  assert.match(startupBody, /await logoutSupabaseUser\(\)/)
-  assert.match(startupBody, /nextSession = null/)
+  assert.match(startupBody, /let nextSession = data\.session \|\| null/)
+  assert.match(startupBody, /await loadSupabaseWorkspace\(\)/)
+  assert.doesNotMatch(startupBody, /await logoutSupabaseUser\(\)/)
 })
 
 test('My test cases supports search and displays the saved date and time', () => {
