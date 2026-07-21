@@ -144,7 +144,8 @@ export default async function handler(req, res) {
           { role: 'system', content: systemPrompt },
           { role: 'user', content: createVisionUserContent(`Create a test suite from this ${isDevelopment ? 'feature' : 'issue'} context:\n${JSON.stringify(safeInput, null, 2)}${imageResult.image ? '\n\nInspect the attached screenshot as issue evidence. Derive test scenarios from only visible UI behavior and clearly mark any uncertain interpretation as an assumption.' : ''}`, imageResult.image) },
         ],
-        response_format: createGroqResponseFormat(testCaseSchema, Boolean(imageResult.image)),
+        response_format: createGroqResponseFormat(testCaseSchema, Boolean(imageResult.image), model),
+        reasoning_effort: imageResult.image && model === 'qwen/qwen3.6-27b' ? 'none' : undefined,
       }),
     })
 

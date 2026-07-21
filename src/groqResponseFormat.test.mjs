@@ -4,8 +4,12 @@ import { createGroqResponseFormat } from './groqResponseFormat.js'
 
 const schema = { type: 'object' }
 
-test('vision omits response formatting so image-capable models are not constrained by unsupported structured output modes', () => {
-  assert.equal(createGroqResponseFormat(schema, true), undefined)
+test('Qwen vision uses JSON mode so the response can be parsed safely', () => {
+  assert.deepEqual(createGroqResponseFormat(schema, true, 'qwen/qwen3.6-27b'), { type: 'json_object' })
+})
+
+test('other vision models omit response formatting when JSON mode is unsupported', () => {
+  assert.equal(createGroqResponseFormat(schema, true, 'another-vision-model'), undefined)
 })
 
 test('text generation retains strict JSON Schema output', () => {
