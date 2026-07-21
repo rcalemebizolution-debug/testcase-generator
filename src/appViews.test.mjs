@@ -128,6 +128,7 @@ test('logout clears the selected workspace', () => {
 test('Maintenance lets testers attach an image, video, or file as issue evidence', () => {
   assert.match(source, /label="Issue evidence"/)
   assert.match(source, /video\/mp4,video\/webm,video\/quicktime/)
+  assert.match(source, /video up to 150 MB/)
   assert.match(source, /application\/pdf/)
   assert.match(source, /Upload image, video, or file/)
   assert.match(source, /onChange=\{handleIssueMediaUpload\}/)

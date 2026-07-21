@@ -30,7 +30,7 @@ const blankForm = {
 }
 
 const supportedIssueVideoTypes = new Set(['video/mp4', 'video/webm', 'video/quicktime'])
-const MAX_ISSUE_VIDEO_BYTES = 15 * 1024 * 1024
+const MAX_ISSUE_VIDEO_BYTES = 150 * 1024 * 1024
 const supportedIssueFileTypes = new Set([
   'application/pdf', 'text/plain', 'text/csv', 'text/markdown', 'application/json',
   'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -819,7 +819,7 @@ export default function App() {
 
     if (file.type.startsWith('video/')) {
       if (!supportedIssueVideoTypes.has(file.type) || file.size > MAX_ISSUE_VIDEO_BYTES) {
-        setNotice('Use an MP4, WebM, or MOV video no larger than 15 MB.')
+        setNotice('Use an MP4, WebM, or MOV video no larger than 150 MB.')
         setTimeout(() => setNotice(''), 3200)
         return
       }
@@ -1093,7 +1093,7 @@ export default function App() {
             <Field label="Sub module" required><input className={errors.subModule ? 'error' : ''} value={form.subModule} onChange={e => update('subModule', e.target.value)} placeholder="e.g. Password recovery" /></Field>
             <Field label="Issue title" required wide><input className={errors.issueTitle ? 'error' : ''} value={form.issueTitle} onChange={e => update('issueTitle', e.target.value)} placeholder="What should be tested?" /></Field>
             <Field label="Issue details" required wide hint={`${form.issueDetails.length}/600`}><textarea className={errors.issueDetails ? 'error' : ''} maxLength="600" rows="4" value={form.issueDetails} onChange={e => update('issueDetails', e.target.value)} placeholder="Describe the feature, expected behavior, rules, and constraints..." /></Field>
-            <Field label="Issue evidence" wide hint="Optional · Image up to 2 MB or video up to 15 MB">
+            <Field label="Issue evidence" wide hint="Optional · Image up to 2 MB or video up to 150 MB">
               <input id="issue-media-upload" className="media-file-input" type="file" accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,video/quicktime,application/pdf,text/plain,text/csv,text/markdown,application/json,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={handleIssueMediaUpload} />
               <label className="media-upload" htmlFor="issue-media-upload"><span className="media-upload-icon">{icons.plus}</span><span><strong>Upload image, video, or file</strong><small>Images, videos, PDF, Word, Excel, TXT, CSV, Markdown, or JSON</small></span><b>Browse files</b></label>
             </Field>
