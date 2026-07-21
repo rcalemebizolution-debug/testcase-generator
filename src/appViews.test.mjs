@@ -125,9 +125,11 @@ test('logout clears the selected workspace', () => {
   assert.match(logoutBody, /setWorkspaceMode\(null\)/)
 })
 
-test('Maintenance lets testers attach an image or video as issue evidence for AI analysis', () => {
+test('Maintenance lets testers attach an image, video, or file as issue evidence', () => {
   assert.match(source, /label="Issue evidence"/)
   assert.match(source, /video\/mp4,video\/webm,video\/quicktime/)
+  assert.match(source, /application\/pdf/)
+  assert.match(source, /Upload image, video, or file/)
   assert.match(source, /onChange=\{handleIssueMediaUpload\}/)
   assert.match(source, /preview frame from this video is used for AI-enhanced generation/)
 })

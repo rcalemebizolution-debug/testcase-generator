@@ -31,6 +31,13 @@ const blankForm = {
 
 const supportedIssueVideoTypes = new Set(['video/mp4', 'video/webm', 'video/quicktime'])
 const MAX_ISSUE_VIDEO_BYTES = 15 * 1024 * 1024
+const supportedIssueFileTypes = new Set([
+  'application/pdf', 'text/plain', 'text/csv', 'text/markdown', 'application/json',
+  'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+])
+const supportedTextFileTypes = new Set(['text/plain', 'text/csv', 'text/markdown', 'application/json'])
+const MAX_ISSUE_FILE_BYTES = 5 * 1024 * 1024
 
 const example = {
   mainModule: 'Authentication',
@@ -670,6 +677,7 @@ export default function App() {
   const [form, setForm] = useState(blankForm)
   const [issueImage, setIssueImage] = useState(null)
   const [issueAttachment, setIssueAttachment] = useState(null)
+  const [attachmentText, setAttachmentText] = useState('')
   const [cases, setCases] = useState([])
   const [openCases, setOpenCases] = useState([0])
   const [notice, setNotice] = useState('')
@@ -801,6 +809,7 @@ export default function App() {
     if (issueAttachment?.kind === 'video' && issueAttachment.previewUrl) URL.revokeObjectURL(issueAttachment.previewUrl)
     setIssueAttachment(null)
     setIssueImage(null)
+    setAttachmentText('')
   }
 
   const handleIssueMediaUpload = async event => {
@@ -820,6 +829,7 @@ export default function App() {
         if (!result.ok) throw new Error(result.error)
         if (issueAttachment?.kind === 'video' && issueAttachment.previewUrl) URL.revokeObjectURL(issueAttachment.previewUrl)
         setIssueImage(result.image)
+        setAttachmentText('')
         setIssueAttachment({ kind: 'video', name: file.name, type: file.type, size: file.size, previewUrl: URL.createObjectURL(file) })
         setNotice('Video attached. A preview frame will be used for AI analysis.')
         setTimeout(() => setNotice(''), 2800)
@@ -830,9 +840,29 @@ export default function App() {
       return
     }
 
+    if (supportedIssueFileTypes.has(file.type)) {
+      if (file.size > MAX_ISSUE_FILE_BYTES) {
+        setNotice('Files must be no larger than 5 MB.')
+        setTimeout(() => setNotice(''), 3200)
+        return
+      }
+      try {
+        const extractedText = supportedTextFileTypes.has(file.type) ? (await file.text()).trim().slice(0, 12_000) : ''
+        if (issueAttachment?.kind === 'video' && issueAttachment.previewUrl) URL.revokeObjectURL(issueAttachment.previewUrl)
+        setIssueImage(null)
+        setIssueAttachment({ kind: 'file', name: file.name, type: file.type, size: file.size, previewUrl: '', textIncluded: Boolean(extractedText) })
+        setAttachmentText(extractedText ? `Attached file: ${file.name}\n${extractedText}` : '')
+        setNotice(extractedText ? 'File attached. Its text will be included in AI analysis.' : 'File attached as reference. PDF, Word, and Excel content is not analyzed yet.')
+        setTimeout(() => setNotice(''), 3200)
+      } catch {
+        setNotice('The file could not be read. Choose another file.')
+        setTimeout(() => setNotice(''), 3200)
+      }
+      return
+    }
+
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 2 * 1024 * 1024) {
-      const result = validateIssueImage({ name: file.name, type: file.type, size: file.size, dataUrl: '' })
-      setNotice(result.error)
+      setNotice('Use an image, video, PDF, Word, Excel, TXT, CSV, Markdown, or JSON file.')
       setTimeout(() => setNotice(''), 3200)
       return
     }
@@ -843,6 +873,7 @@ export default function App() {
       if (result.ok) {
         if (issueAttachment?.kind === 'video' && issueAttachment.previewUrl) URL.revokeObjectURL(issueAttachment.previewUrl)
         setIssueImage(result.image)
+        setAttachmentText('')
         setIssueAttachment({ kind: 'image', name: result.image.name, type: result.image.type, size: result.image.size, previewUrl: result.image.dataUrl })
       }
       else {
@@ -884,7 +915,7 @@ export default function App() {
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-app-access-code': accessCode.trim() },
-        body: JSON.stringify({ ...form, issueImage }),
+        body: JSON.stringify({ ...form, issueImage, attachmentText }),
       })
       const responseText = await response.text()
       let payload = {}
@@ -1063,10 +1094,10 @@ export default function App() {
             <Field label="Issue title" required wide><input className={errors.issueTitle ? 'error' : ''} value={form.issueTitle} onChange={e => update('issueTitle', e.target.value)} placeholder="What should be tested?" /></Field>
             <Field label="Issue details" required wide hint={`${form.issueDetails.length}/600`}><textarea className={errors.issueDetails ? 'error' : ''} maxLength="600" rows="4" value={form.issueDetails} onChange={e => update('issueDetails', e.target.value)} placeholder="Describe the feature, expected behavior, rules, and constraints..." /></Field>
             <Field label="Issue evidence" wide hint="Optional · Image up to 2 MB or video up to 15 MB">
-              <input id="issue-media-upload" className="media-file-input" type="file" accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,video/quicktime" onChange={handleIssueMediaUpload} />
-              <label className="media-upload" htmlFor="issue-media-upload"><span className="media-upload-icon">{icons.plus}</span><span><strong>Upload image or video</strong><small>PNG, JPEG, WebP, MP4, WebM, or MOV</small></span><b>Browse files</b></label>
+              <input id="issue-media-upload" className="media-file-input" type="file" accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,video/quicktime,application/pdf,text/plain,text/csv,text/markdown,application/json,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={handleIssueMediaUpload} />
+              <label className="media-upload" htmlFor="issue-media-upload"><span className="media-upload-icon">{icons.plus}</span><span><strong>Upload image, video, or file</strong><small>Images, videos, PDF, Word, Excel, TXT, CSV, Markdown, or JSON</small></span><b>Browse files</b></label>
             </Field>
-            {issueAttachment && <div className="issue-evidence-preview">{issueAttachment.kind === 'video' ? <video controls src={issueAttachment.previewUrl}>Your browser cannot preview this video.</video> : <img src={issueAttachment.previewUrl} alt="Attached issue evidence preview" />}<div><strong>{issueAttachment.name}</strong><small>{issueAttachment.kind === 'video' ? 'A preview frame from this video is used for AI-enhanced generation. The full video is not uploaded to the AI.' : 'This image is used only for AI-enhanced generation and is not saved with the test suite.'}</small><button type="button" onClick={clearIssueAttachment}>Remove attachment</button></div></div>}
+            {issueAttachment && <div className="issue-evidence-preview">{issueAttachment.kind === 'video' ? <video controls src={issueAttachment.previewUrl}>Your browser cannot preview this video.</video> : issueAttachment.kind === 'image' ? <img src={issueAttachment.previewUrl} alt="Attached issue evidence preview" /> : <span className="file-evidence-icon">{icons.file}</span>}<div><strong>{issueAttachment.name}</strong><small>{issueAttachment.kind === 'video' ? 'A preview frame from this video is used for AI-enhanced generation. The full video is not uploaded to the AI.' : issueAttachment.kind === 'file' ? issueAttachment.textIncluded ? 'This text-based file is included as context for AI-enhanced generation.' : 'This file is attached as reference. PDF, Word, and Excel content is not analyzed yet.' : 'This image is used only for AI-enhanced generation and is not saved with the test suite.'}</small><button type="button" onClick={clearIssueAttachment}>Remove attachment</button></div></div>}
             <Field label="Precondition" wide hint="Optional"><textarea rows="2" value={form.precondition} onChange={e => update('precondition', e.target.value)} placeholder="What must already be true before testing begins?" /></Field>
             <Field label="Test steps" required wide hint="One step per line"><textarea className={errors.testSteps ? 'error' : ''} rows="6" value={form.testSteps} onChange={e => update('testSteps', e.target.value)} placeholder={'Open the sign-in page\nEnter a registered email\nSelect Continue'} /></Field>
           </div>
