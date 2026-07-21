@@ -125,9 +125,9 @@ test('logout clears the selected workspace', () => {
   assert.match(logoutBody, /setWorkspaceMode\(null\)/)
 })
 
-test('Maintenance lets testers attach one supported issue screenshot for AI analysis', () => {
-  assert.match(source, /label="Issue screenshot"/)
-  assert.match(source, /accept="image\/png,image\/jpeg,image\/webp"/)
-  assert.match(source, /onChange=\{handleIssueImageUpload\}/)
-  assert.match(source, /Screenshot is used only for AI-enhanced generation/)
+test('Maintenance lets testers attach an image or video as issue evidence for AI analysis', () => {
+  assert.match(source, /label="Issue evidence"/)
+  assert.match(source, /video\/mp4,video\/webm,video\/quicktime/)
+  assert.match(source, /onChange=\{handleIssueMediaUpload\}/)
+  assert.match(source, /preview frame from this video is used for AI-enhanced generation/)
 })

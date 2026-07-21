@@ -29,6 +29,9 @@ const blankForm = {
   precondition: '', testSteps: '', priority: 'Medium', coverage: 'Balanced',
 }
 
+const supportedIssueVideoTypes = new Set(['video/mp4', 'video/webm', 'video/quicktime'])
+const MAX_ISSUE_VIDEO_BYTES = 15 * 1024 * 1024
+
 const example = {
   mainModule: 'Authentication',
   subModule: 'Password recovery',
@@ -613,9 +616,60 @@ function AdminPanel({ users, session, onDeleteUser, onRoleChange, onStatusChange
   </section>
 }
 
+function dataUrlByteSize(dataUrl) {
+  const payload = String(dataUrl || '').split(',')[1] || ''
+  const padding = payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0
+  return Math.max(0, Math.floor(payload.length * 3 / 4) - padding)
+}
+
+function createVideoPreviewFrame(file) {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video')
+    const objectUrl = URL.createObjectURL(file)
+    let captured = false
+
+    const cleanUp = () => URL.revokeObjectURL(objectUrl)
+    const capture = () => {
+      if (captured) return
+      captured = true
+      try {
+        const maxWidth = 960
+        const scale = Math.min(1, maxWidth / Math.max(video.videoWidth, 1))
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.max(1, Math.round(video.videoWidth * scale))
+        canvas.height = Math.max(1, Math.round(video.videoHeight * scale))
+        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height)
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.72)
+        cleanUp()
+        resolve({
+          name: `${file.name.replace(/\.[^.]+$/, '') || 'video'}-preview.jpg`,
+          type: 'image/jpeg',
+          size: dataUrlByteSize(dataUrl),
+          dataUrl,
+        })
+      } catch (error) {
+        cleanUp()
+        reject(error)
+      }
+    }
+
+    video.preload = 'auto'
+    video.muted = true
+    video.playsInline = true
+    video.onloadeddata = () => {
+      if (!Number.isFinite(video.duration) || video.duration <= 0.1) capture()
+      else video.currentTime = Math.min(1, video.duration * 0.1)
+    }
+    video.onseeked = capture
+    video.onerror = () => { cleanUp(); reject(new Error('Video preview could not be created.')) }
+    video.src = objectUrl
+  })
+}
+
 export default function App() {
   const [form, setForm] = useState(blankForm)
   const [issueImage, setIssueImage] = useState(null)
+  const [issueAttachment, setIssueAttachment] = useState(null)
   const [cases, setCases] = useState([])
   const [openCases, setOpenCases] = useState([0])
   const [notice, setNotice] = useState('')
@@ -743,10 +797,39 @@ export default function App() {
     setErrors(e => ({ ...e, [key]: false }))
   }
 
-  const handleIssueImageUpload = event => {
+  const clearIssueAttachment = () => {
+    if (issueAttachment?.kind === 'video' && issueAttachment.previewUrl) URL.revokeObjectURL(issueAttachment.previewUrl)
+    setIssueAttachment(null)
+    setIssueImage(null)
+  }
+
+  const handleIssueMediaUpload = async event => {
     const file = event.target.files?.[0]
     event.target.value = ''
     if (!file) return
+
+    if (file.type.startsWith('video/')) {
+      if (!supportedIssueVideoTypes.has(file.type) || file.size > MAX_ISSUE_VIDEO_BYTES) {
+        setNotice('Use an MP4, WebM, or MOV video no larger than 15 MB.')
+        setTimeout(() => setNotice(''), 3200)
+        return
+      }
+      try {
+        const preview = await createVideoPreviewFrame(file)
+        const result = validateIssueImage(preview)
+        if (!result.ok) throw new Error(result.error)
+        if (issueAttachment?.kind === 'video' && issueAttachment.previewUrl) URL.revokeObjectURL(issueAttachment.previewUrl)
+        setIssueImage(result.image)
+        setIssueAttachment({ kind: 'video', name: file.name, type: file.type, size: file.size, previewUrl: URL.createObjectURL(file) })
+        setNotice('Video attached. A preview frame will be used for AI analysis.')
+        setTimeout(() => setNotice(''), 2800)
+      } catch (error) {
+        setNotice(error.message || 'The video preview could not be created. Choose another video.')
+        setTimeout(() => setNotice(''), 3200)
+      }
+      return
+    }
+
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 2 * 1024 * 1024) {
       const result = validateIssueImage({ name: file.name, type: file.type, size: file.size, dataUrl: '' })
       setNotice(result.error)
@@ -757,7 +840,11 @@ export default function App() {
     const reader = new FileReader()
     reader.onload = () => {
       const result = validateIssueImage({ name: file.name, type: file.type, size: file.size, dataUrl: reader.result })
-      if (result.ok) setIssueImage(result.image)
+      if (result.ok) {
+        if (issueAttachment?.kind === 'video' && issueAttachment.previewUrl) URL.revokeObjectURL(issueAttachment.previewUrl)
+        setIssueImage(result.image)
+        setIssueAttachment({ kind: 'image', name: result.image.name, type: result.image.type, size: result.image.size, previewUrl: result.image.dataUrl })
+      }
       else {
         setNotice(result.error)
         setTimeout(() => setNotice(''), 3200)
@@ -975,8 +1062,11 @@ export default function App() {
             <Field label="Sub module" required><input className={errors.subModule ? 'error' : ''} value={form.subModule} onChange={e => update('subModule', e.target.value)} placeholder="e.g. Password recovery" /></Field>
             <Field label="Issue title" required wide><input className={errors.issueTitle ? 'error' : ''} value={form.issueTitle} onChange={e => update('issueTitle', e.target.value)} placeholder="What should be tested?" /></Field>
             <Field label="Issue details" required wide hint={`${form.issueDetails.length}/600`}><textarea className={errors.issueDetails ? 'error' : ''} maxLength="600" rows="4" value={form.issueDetails} onChange={e => update('issueDetails', e.target.value)} placeholder="Describe the feature, expected behavior, rules, and constraints..." /></Field>
-            <Field label="Issue screenshot" wide hint="Optional · PNG, JPEG, or WebP · max 2 MB"><input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleIssueImageUpload} /></Field>
-            {issueImage && <div className="issue-image-preview"><img src={issueImage.dataUrl} alt="Attached issue screenshot preview" /><div><strong>{issueImage.name}</strong><small>Screenshot is used only for AI-enhanced generation and is not saved with the test suite.</small><button type="button" onClick={() => setIssueImage(null)}>Remove screenshot</button></div></div>}
+            <Field label="Issue evidence" wide hint="Optional · Image up to 2 MB or video up to 15 MB">
+              <input id="issue-media-upload" className="media-file-input" type="file" accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,video/quicktime" onChange={handleIssueMediaUpload} />
+              <label className="media-upload" htmlFor="issue-media-upload"><span className="media-upload-icon">{icons.plus}</span><span><strong>Upload image or video</strong><small>PNG, JPEG, WebP, MP4, WebM, or MOV</small></span><b>Browse files</b></label>
+            </Field>
+            {issueAttachment && <div className="issue-evidence-preview">{issueAttachment.kind === 'video' ? <video controls src={issueAttachment.previewUrl}>Your browser cannot preview this video.</video> : <img src={issueAttachment.previewUrl} alt="Attached issue evidence preview" />}<div><strong>{issueAttachment.name}</strong><small>{issueAttachment.kind === 'video' ? 'A preview frame from this video is used for AI-enhanced generation. The full video is not uploaded to the AI.' : 'This image is used only for AI-enhanced generation and is not saved with the test suite.'}</small><button type="button" onClick={clearIssueAttachment}>Remove attachment</button></div></div>}
             <Field label="Precondition" wide hint="Optional"><textarea rows="2" value={form.precondition} onChange={e => update('precondition', e.target.value)} placeholder="What must already be true before testing begins?" /></Field>
             <Field label="Test steps" required wide hint="One step per line"><textarea className={errors.testSteps ? 'error' : ''} rows="6" value={form.testSteps} onChange={e => update('testSteps', e.target.value)} placeholder={'Open the sign-in page\nEnter a registered email\nSelect Continue'} /></Field>
           </div>
@@ -989,7 +1079,7 @@ export default function App() {
           </div>
 
           <div className="form-actions">
-            <button className="clear" onClick={() => { setForm(blankForm); setIssueImage(null); setCases([]); setErrors({}); setAccessCode(''); setActiveSuiteId(''); setEditingCaseId(''); setNotice('Draft cleared'); setTimeout(() => setNotice(''), 1600) }}>{icons.trash}<span>Clear</span></button>
+            <button className="clear" onClick={() => { setForm(blankForm); clearIssueAttachment(); setCases([]); setErrors({}); setAccessCode(''); setActiveSuiteId(''); setEditingCaseId(''); setNotice('Draft cleared'); setTimeout(() => setNotice(''), 1600) }}>{icons.trash}<span>Clear</span></button>
             <button className="example" onClick={() => { setForm(example); setErrors({}) }}>Use example</button>
             {cases.length > 0 && <button className="save-suite" onClick={saveSuite}>{icons.file}<span>{activeSuiteId ? 'Update saved suite' : 'Save suite'}</span></button>}
             <button className="generate" onClick={generate} disabled={generating}>{generating ? <span className="spinner"/> : icons.wand}<span>{generating ? 'Analyzing real-world scenarios…' : aiEnabled ? 'Generate with AI' : 'Generate test cases'}</span></button>
